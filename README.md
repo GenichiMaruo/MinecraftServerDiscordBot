@@ -1,0 +1,2 @@
+# MinecraftServerDiscordBot
+マイクラ鯖を動かすためのDsicord Bot
