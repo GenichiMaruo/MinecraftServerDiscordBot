@@ -144,6 +144,7 @@ async def list_server(interaction: discord.Interaction):
         if len(resp) == 0:
             resp = "No"
         resp = f"```fix\n{resp} players are playing on the server.\n```"
+        await interaction.response.send_message(resp)
     else:
         await interaction.response.send_message("Minecraft server is not running!")
 
@@ -163,9 +164,24 @@ async def say_server(interaction: discord.Interaction, message: str):
     if is_server_running():
         # メッセージをサーバーに送信する
         with mcrcon.MCRcon(server_address, server_password, server_port) as mcr:
-            resp = mcr.command(f"say {message}")
-        resp = f"```fix\n{resp}\n```"
-        await interaction.response.send_message(resp)
+            mcr.command(f"say {message}")
+        await interaction.response.send_message("Message sent!")
+    else:
+        await interaction.response.send_message("Minecraft server is not running!")
+
+
+# 管理者のみが実行できるサーバー操作コマンド
+@tree.command(name="command", description="Sends a command to the Minecraft server")
+@app_commands.default_permissions(administrator=True)
+async def say_server(interaction: discord.Interaction, message: str):
+    if is_server_running():
+        # メッセージの先頭に/がない場合は、/を追加する
+        if message[0] != "/":
+            message = "/" + message
+        # メッセージをサーバーに送信する
+        with mcrcon.MCRcon(server_address, server_password, server_port) as mcr:
+            mcr.command(f"{message}")
+        await interaction.response.send_message("Message sent!")
     else:
         await interaction.response.send_message("Minecraft server is not running!")
 
@@ -187,7 +203,13 @@ async def check_player():
                     "```txt\nNo players are playing on the server.\nIf no players join within 5 minutes, the server will be stopped.```"
                 )
                 await asyncio.sleep(300)
-                if is_server_running():
+                with mcrcon.MCRcon(server_address, server_password, server_port) as mcr:
+                    resp = mcr.command("list")
+                # 5分後にもプレイヤーがいない場合は、サーバーを停止する
+                if (
+                    re.search(r"0 of a max of 20 players online", resp)
+                    and is_server_running()
+                ):
                     # サーバーを停止するコマンドを実行する
                     with mcrcon.MCRcon(
                         server_address, server_password, server_port
