@@ -32,6 +32,16 @@ process = None
 
 # discord_token.txt からdiscord botのtokenを読み込む
 TOKEN = open("discord_token.txt", "r").read()
+os.chdir(SERVER_DIRECTORY)
+
+dice_emoji = [
+    "<:dice_1:1186303558426038385>",
+    "<:dice_2:1186303562163175565>",
+    "<:dice_3:1186303565522813000>",
+    "<:dice_4:1186303567036960788>",
+    "<:dice_5:1186303569624838315>",
+    "<:dice_6:1186303556953833572>",
+]
 
 
 @tree.command(name="hello", description="Says hello to you")
@@ -42,7 +52,7 @@ async def hello(interaction: discord.Interaction):
 # 引数なしだと1つのサイコロ、引数があるとその数のサイコロを振る
 @tree.command(name="dice", description="Rolls a dice")
 async def dice(interaction: discord.Interaction, num: int = 1):
-    if num > 20:
+    if num > 60:
         await interaction.response.send_message("Too many dice!")
         return
     if num < 1:
@@ -54,9 +64,12 @@ async def dice(interaction: discord.Interaction, num: int = 1):
         dice_list.append(random.randint(1, 6))
     # サイコロの目を表示する
     dice_str = ", ".join([str(i) for i in dice_list])
-    await interaction.response.send_message(
-        f"{interaction.user.mention} rolled {dice_str}!"
-    )
+    await interaction.response.send_message(f"{interaction.user.mention} rolled!")
+    # discordのサイコロの絵文字を表示する
+    dice_resp = ""
+    for i in dice_list:
+        dice_resp += f"{dice_emoji[i-1]}"
+    await interaction.channel.send(dice_resp)
 
 
 # ヘルプコマンド
@@ -114,9 +127,6 @@ async def start_server(interaction: discord.Interaction):
 
 async def start_process():
     global process
-    # もし現在のディレクトリがサーバーのディレクトリでない場合は、移動する
-    if os.getcwd() != SERVER_DIRECTORY:
-        os.chdir(SERVER_DIRECTORY)
     # shell scriptを実行して、サーバーを起動する
     process = subprocess.Popen(
         SERVER_SHELL,
