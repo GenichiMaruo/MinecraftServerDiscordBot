@@ -49,6 +49,16 @@ async def hello(interaction: discord.Interaction):
     await interaction.response.send_message(f"Hello, {interaction.user.mention}!")
 
 
+# ネタコマンド
+@tree.command(name="stap", description="Innovative unknown cell")
+async def stap(interaction: discord.Interaction):
+    # 100分の1の確率でStap細胞が出現する
+    if random.randint(0, 100) == 0:
+        await interaction.response.send_message("Stap細胞はあります！")
+    else:
+        await interaction.response.send_message("Stap細胞はありません…")
+
+
 # 引数なしだと1つのサイコロ、引数があるとその数のサイコロを振る
 @tree.command(name="dice", description="Rolls a dice")
 async def dice(interaction: discord.Interaction, num: int = 1):
