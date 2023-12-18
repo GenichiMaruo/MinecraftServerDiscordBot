@@ -10,6 +10,7 @@ import re
 import signal
 import time
 import subprocess
+import random
 
 import asyncio
 
@@ -33,9 +34,50 @@ process = None
 TOKEN = open("discord_token.txt", "r").read()
 
 
-@tree.command(name="hello", description="Hello, world!")
+@tree.command(name="hello", description="Says hello to you")
 async def hello(interaction: discord.Interaction):
     await interaction.response.send_message(f"Hello, {interaction.user.mention}!")
+
+
+# 引数なしだと1つのサイコロ、引数があるとその数のサイコロを振る
+@tree.command(name="dice", description="Rolls a dice")
+async def dice(interaction: discord.Interaction, num: int = 1):
+    if num > 20:
+        await interaction.response.send_message("Too many dice!")
+        return
+    if num < 1:
+        await interaction.response.send_message("Too few dice!")
+        return
+    # サイコロを振る
+    dice_list = []
+    for i in range(num):
+        dice_list.append(random.randint(1, 6))
+    # サイコロの目を表示する
+    dice_str = ", ".join([str(i) for i in dice_list])
+    await interaction.response.send_message(
+        f"{interaction.user.mention} rolled {dice_str}!"
+    )
+
+
+# ヘルプコマンド
+@tree.command(name="help", description="Shows the help message")
+async def help(interaction: discord.Interaction):
+    await interaction.response.send_message(
+        "```fix\n"
+        + "Minecraft Discord Bot\n"
+        + "Commands:\n"
+        + "/hello - Says hello to you\n"
+        + "/dice - Rolls a dice\n"
+        + "/start - Starts the Minecraft server\n"
+        + "/backup - Backs up the Minecraft server\n"
+        + "/stop - Stops the Minecraft server\n"
+        + "/status - Checks the status of the Minecraft server\n"
+        + "/list - Lists the players on the Minecraft server\n"
+        + "/exit - Stops the Discord bot\n"
+        + "/say - Says a message on the Minecraft server\n"
+        + "/command - Sends a command to the Minecraft server\n"
+        + "```"
+    )
 
 
 @tree.command(name="start", description="Starts the Minecraft server")
@@ -94,10 +136,14 @@ async def start_process():
 @tree.command(name="backup", description="Backs up the Minecraft server")
 async def backup_server(interaction: discord.Interaction):
     # Code to backup the Minecraft server
-    await interaction.response.send_message("Backup Command Received!")
+    # 開発中で未実装であることも伝える
+    await interaction.response.send_message(
+        "Backup Command Received! (Not implemented)"
+    )
 
 
 @tree.command(name="stop", description="Stops the Minecraft server")
+@app_commands.default_permissions(administrator=True)
 async def stop_server(interaction: discord.Interaction):
     # if minecraft server is already running
     if is_server_running():
@@ -140,11 +186,20 @@ async def list_server(interaction: discord.Interaction):
         # 参加人数を確認する
         with mcrcon.MCRcon(server_address, server_password, server_port) as mcr:
             resp = mcr.command("list")
-        resp = resp.split(" ")[1:]
-        if len(resp) == 0:
-            resp = "No"
-        resp = f"```fix\n{resp} players are playing on the server.\n```"
-        await interaction.response.send_message(resp)
+        # プレイヤーがいない場合
+        if re.search(r"0 of a max of 20 players online", resp):
+            await interaction.response.send_message("No players are playing!")
+        # プレイヤーがいる場合
+        else:
+            # プレイヤーの一覧を取得する。online: のあとの文字列がプレイヤーの一覧
+            player_list = re.search(r"online: (.*)", resp).group(1)
+            # プレイヤーの一覧を改行で区切って、リストに格納する
+            player_list = player_list.split(", ")
+            player_count = len(player_list)
+            # 表示のときは、改行を入れて見やすくする
+            player_list = "\n".join(player_list)
+            resp = f"```fix\n{player_count} players are playing!\n{player_list}\n```"
+            await interaction.response.send_message(resp)
     else:
         await interaction.response.send_message("Minecraft server is not running!")
 
