@@ -1,4 +1,4 @@
-TOKEN = "MTE4NTgyODc5NzAyNzcyNTM0Mw.GVoaxN.t6MLuGNhmiFAz0E0HUJldwClYarvtSsA4ih9Uw"
+TOKEN = None
 SERVER_DIRECTORY = "./MINECRAFT/server"
 SERVER_NAME = "Minecraft Server"
 SERVER_SHELL = "run.bat"
@@ -28,6 +28,9 @@ server_port = 25575
 server_password = "minecraft"
 last_execution_time = 0
 process = None
+
+# discord_token.txt からdiscord botのtokenを読み込む
+TOKEN = open("discord_token.txt", "r").read()
 
 
 @tree.command(name="hello", description="Hello, world!")

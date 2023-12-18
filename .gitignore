@@ -160,3 +160,4 @@ cython_debug/
 #.idea/
 
 MINECRAFT/
+discord_token.txt
