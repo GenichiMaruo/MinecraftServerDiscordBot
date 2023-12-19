@@ -79,7 +79,6 @@ async def dice(interaction: discord.Interaction, num: int = 1):
         dice_resp += f"{dice_emoji[i-1]}"
     await interaction.channel.send(dice_resp)
 
-
 # unkoコマンド
 @tree.command(name="unko", description="unko")
 async def unko(interaction: discord.Interaction):
