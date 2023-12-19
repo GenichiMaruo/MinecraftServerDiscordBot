@@ -31,7 +31,8 @@ last_execution_time = 0
 process = None
 
 # discord_token.txt からdiscord botのtokenを読み込む
-TOKEN = open("discord_token.txt", "r").read()
+with open("discord_token.txt", "r") as f:
+    TOKEN = f.read()
 os.chdir(SERVER_DIRECTORY)
 
 dice_emoji = [
@@ -273,7 +274,7 @@ async def check_player():
             # プレイヤーが存在しない場合は、5分後にサーバーを停止する
             if re.search(r"0 of a max of 20 players online", resp):
                 # サーバーにプレイヤーがいないことをdiscordに通知する
-                channel = client.get_channel(channel_id)
+                channel = client.get_channel(CHANNEL_ID)
                 await channel.send(
                     "```txt\nNo players are playing on the server.\nIf no players join within 5 minutes, the server will be stopped.```"
                 )
