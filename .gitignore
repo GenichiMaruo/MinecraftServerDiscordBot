@@ -160,6 +160,8 @@ cython_debug/
 #.idea/
 
 MINECRAFT/
+server_id.txt
 discord_token.txt
 user_data.json
 shop_list.json
+test.json
