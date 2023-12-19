@@ -80,6 +80,11 @@ async def dice(interaction: discord.Interaction, num: int = 1):
     await interaction.channel.send(dice_resp)
 
 
+# unkoコマンド
+@tree.command(name="unko", description="unko")
+async def unko(interaction: discord.Interaction):
+    await interaction.response.send_message("💩")
+
 # ヘルプコマンド
 @tree.command(name="help", description="Shows the help message")
 async def help(interaction: discord.Interaction):
