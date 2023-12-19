@@ -11,6 +11,7 @@ import signal
 import time
 import subprocess
 import random
+import json
 
 import asyncio
 
@@ -18,6 +19,7 @@ import mcrcon
 
 import discord
 from discord import app_commands
+from discord.ext import tasks
 
 channel_id = 1185881826527559710
 
@@ -261,6 +263,257 @@ async def say_server(interaction: discord.Interaction, message: str):
         await interaction.response.send_message("Minecraft server is not running!")
 
 
+# MinecraftのidとDiscordのidを紐付ける
+@tree.command(
+    name="link", description="Links your Minecraft account to your Discord account"
+)
+async def link_account(interaction: discord.Interaction, minecraft_id: str):
+    # Minecraftサーバーに接続して、プレイヤーの一覧を取得する
+    with mcrcon.MCRcon(server_address, server_password, server_port) as mcr:
+        resp = mcr.command("list")
+    # プレイヤーがいない場合
+    if re.search(r"0 of a max of 20 players online", resp):
+        await interaction.response.send_message(
+            "Linking failed! No players are playing!"
+        )
+    # プレイヤーがいる場合
+    else:
+        # プレイヤーの一覧を取得する。online: のあとの文字列がプレイヤーの一覧
+        player_list = re.search(r"online: (.*)", resp).group(1)
+        # プレイヤーの一覧を改行で区切って、リストに格納する
+        player_list = player_list.split(", ")
+        # プレイヤーの一覧にminecraft_idがあるかどうかを確認する
+        if minecraft_id in player_list:
+            # プレイヤーの一覧にminecraft_idがある場合
+            # サーバーにランダムな4桁の数字の個人メッセージを送信
+            random_number = random.randint(1000, 9999)
+            with mcrcon.MCRcon(server_address, server_password, server_port) as mcr:
+                mcr.command(
+                    f'tellraw {minecraft_id} ["",{{"text":"Please send this number to the bot.","color":"yellow"}},{{"text":"\\n{random_number}","color":"aqua","bold":true}}]'
+                )
+
+            # プレイヤーからの個人メッセージを待つ
+            def check(m):
+                return (
+                    m.author.id == interaction.user.id
+                    and m.channel.type == discord.ChannelType.private
+                )
+
+            try:
+                # 個人メッセージに4桁の数値を入力するように促す
+                await interaction.response.send_message(
+                    "Please send a 4-digit number to the bot!"
+                )
+                msg = await client.wait_for("message", check=check, timeout=60)
+            except asyncio.TimeoutError:
+                await interaction.response.send_message("Linking failed! Timeout!")
+                return
+            # プレイヤーからの個人メッセージが4桁の数字であるかどうかを確認する
+            try:
+                msg_number = int(msg.content)
+                if msg_number != random_number:
+                    # value errorを発生させる
+                    raise ValueError
+            except ValueError:
+                await interaction.response.send_message(
+                    "Linking failed! Invalid number!"
+                )
+                return
+            # user_data.jsonからdiscord_idのリストを取得する
+            user_data = {}
+            if os.path.exists("user_data.json"):
+                with open("user_data.json", "r") as f:
+                    user_data = json.load(f)
+            # discord_idのリストにinteraction.user.idがない場合は、interaction.user.idを追加する
+            if interaction.user.name not in user_data:
+                user_data[interaction.user.name] = interaction.user.id
+                with open("user_data.json", "w") as f:
+                    json.dump(user_data, f)
+            # user_data.json にminecraft_idとdiscord_idを書き込む
+            user_data[minecraft_id] = interaction.user.id
+            with open("user_data.json", "w") as f:
+                json.dump(user_data, f)
+            # プレイヤーに紐付けが完了したことを個人メッセージで通知する
+            await msg.channel.send("Linking completed!")
+            # プレイヤーに紐付けが完了したことをdiscordに通知する
+            channel = client.get_channel(channel_id)
+            await interaction.response.send_message("Linking completed!")
+            await channel.send(
+                f"```fix\n{interaction.user.name} linked {minecraft_id}!\n```"
+            )
+        else:
+            # プレイヤーの一覧にminecraft_idがない場合
+            await interaction.response.send_message(
+                "Linking failed! This Minecraft ID is not playing!"
+            )
+
+
+# MinecraftのidとDiscordのidが紐付いているかどうかを確認する
+@tree.command(
+    name="check",
+    description="Checks if your Minecraft account is linked to your Discord account",
+)
+async def check_account(interaction: discord.Interaction):
+    # user_data.json からminecraft_idとdiscord_idの紐付けを確認する
+    user_data = {}
+    if os.path.exists("user_data.json"):
+        with open("user_data.json", "r") as f:
+            user_data = json.load(f)
+    # minecraft_idとdiscord_idの紐付けがあるかどうかを確認する
+    for minecraft_id, discord_id in user_data.items():
+        if discord_id == interaction.user.id:
+            await interaction.response.send_message(
+                f"Your Minecraft ID is {minecraft_id}!"
+            )
+            return
+    await interaction.response.send_message(
+        "Your Minecraft ID is not linked to your Discord ID!"
+    )
+
+
+# MinecraftのidとDiscordのidを紐付けを解除する
+@tree.command(
+    name="unlink",
+    description="Unlinks your Minecraft account from your Discord account",
+)
+async def unlink_account(interaction: discord.Interaction):
+    # user_data.json からminecraft_idとdiscord_idの紐付けを確認する
+    user_data = {}
+    if os.path.exists("user_data.json"):
+        with open("user_data.json", "r") as f:
+            user_data = json.load(f)
+    # minecraft_idとdiscord_idの紐付けがあるかどうかを確認する
+    for minecraft_id, discord_id in user_data.items():
+        if discord_id == interaction.user.id:
+            # user_data.json からdiscord_idに紐づいていたminecraft_idを削除する
+            user_data.pop(minecraft_id)
+            with open("user_data.json", "w") as f:
+                json.dump(user_data, f)
+            # プレイヤーに紐付けが解除されたことを個人メッセージで通知する
+            await interaction.response.send_message("Unlinking completed!")
+            # プレイヤーに紐付けが解除されたことをdiscordに通知する
+            channel = client.get_channel(channel_id)
+            await channel.send(
+                f"```fix\n{interaction.user.name} unlinked {minecraft_id}!\n```"
+            )
+            return
+    await interaction.response.send_message(
+        "Your Minecraft ID is not linked to your Discord ID!"
+    )
+
+
+# サーバーポイントを確認する
+@tree.command(name="point", description="Checks your server points")
+async def check_point(interaction: discord.Interaction):
+    # user_data.json からdiscord_idに紐付いたポイントを取得する
+    point = 0
+    if os.path.exists("point_data.json"):
+        with open("point_data.json", "r") as f:
+            point_data = json.load(f)
+        if interaction.user.id in point_data:
+            point = point_data[interaction.user.id]
+    await interaction.response.send_message(f"Your point is ```{point}```!")
+
+
+# サーバーポイントで購入できるアイテムの一覧を表示する
+@tree.command(name="mcshop", description="Shows the shop")
+async def show_shop(interaction: discord.Interaction):
+    # JSONからアイテムの情報を読み込む
+    with open("items.json", "r") as f:
+        items_data = json.load(f)
+    items_list = items_data.get("items", [])  # "items"キーのリストを取得
+    # ユーザーにアイテムの一覧を表示する
+    shop_embed = discord.Embed(
+        title="Server Shop", description="Available Items for Purchase"
+    )
+    for item in items_list:
+        shop_embed.add_field(
+            name=f"{item['name']} - Price: {item['price']} points",
+            value=f"ID: {item['id']}\nDescription: {item['description']}",
+            inline=False,
+        )
+    await interaction.response.send_message(embed=shop_embed)
+
+
+# サーバーポイントでマイクラのアイテムを購入する
+@tree.command(name="buy", description="Buy an item with your server points")
+async def buy_item(interaction: discord.Interaction, item_id: str, amount: int = 1):
+    # JSONからアイテムの情報を読み込む
+    with open("items.json", "r") as f:
+        items_data = json.load(f)
+    items_list = items_data.get("items", [])
+    # マイクラにログインしているかどうかを確認する
+    with mcrcon.MCRcon(server_address, server_password, server_port) as mcr:
+        resp = mcr.command("list")
+    players = re.search(r"online: (.*)", resp).group(1).split(", ")
+    # コマンド実行者のdiscord_idがuser_data.jsonにあり、minecraft_idが紐づいているかどうかを確認する
+    user_data = {}
+    if os.path.exists("user_data.json"):
+        with open("user_data.json", "r") as f:
+            user_data = json.load(f)
+    if interaction.user.name not in user_data:
+        await interaction.response.send_message("You are not linked to Minecraft ID!")
+        return
+    minecraft_id = None
+    for minecraft_id, discord_id in user_data.items():
+        if discord_id == interaction.user.id:
+            break
+    if minecraft_id not in players:
+        await interaction.response.send_message("You are not logged in to Minecraft!")
+        return
+    # アイテムのIDが存在するかどうかを確認する
+    for item in items_list:
+        if item["id"] == item_id:
+            # user_data.json からdiscord_idに紐付いたポイントを取得する
+            point = 0
+            if os.path.exists("point_data.json"):
+                with open("point_data.json", "r") as f:
+                    point_data = json.load(f)
+                if interaction.user.id in point_data:
+                    point = point_data[interaction.user.id]
+            # ポイントが足りているかどうかを確認する
+            if point >= item["price"] * amount:
+                # ポイントを減らす
+                point -= item["price"] * amount
+                # 購入者にアイテムを付与するコマンドをminecraftに送信する
+                with mcrcon.MCRcon(
+                    server_address, server_password, server_port
+                ) as mcr:
+                    mcr.command(f"give {minecraft_id} {item["item_command"]} {amount}")
+                # user_data.json にdiscord_idに紐付いたポイントを書き込む
+                point_data[interaction.user.id] = point
+                with open("point_data.json", "w") as f:
+                    json.dump(point_data, f)
+                # プレイヤーにアイテムが購入されたことを個人メッセージで通知する
+                await interaction.response.send_message("Purchase completed!")
+                # プレイヤーにアイテムが購入されたことをdiscordに通知する
+                channel = client.get_channel(channel_id)
+                await channel.send(
+                    f"```fix\n{interaction.user.name} purchased {item['name']}!\n```"
+                )
+                return
+            else:
+                await interaction.response.send_message(
+                    "You do not have enough points!"
+                )
+                return
+
+
+# user_data.json にデータの無いdiscordサーバー参加者のdiscordのidを書き込む
+@tasks.loop(minutes=5)
+async def add_user_data(member):
+    # user_data.json からdiscord_idのリストを取得する
+    user_data = {}
+    if os.path.exists("user_data.json"):
+        with open("user_data.json", "r") as f:
+            user_data = json.load(f)
+    # discord_idのリストにmember.idがない場合は、member.idを追加する
+    if member.id not in user_data.values():
+        user_data[member.name] = member.id
+        with open("user_data.json", "w") as f:
+            json.dump(user_data, f)
+
+
 # Minecraft Server に接続しているプレイヤーを監視して、0人になったら5分後にサーバーを停止する
 # 定期的に自動実行され、プレイヤーがいる場合はタイマーをリセットする。
 async def check_player():
@@ -306,10 +559,46 @@ async def check_player():
                     # サーバーが停止したことをdiscordに通知する
                     await channel.send("```fix\nMinecraft server stopped!\n```")
             else:
-                # プレイヤーがいる場合は、5分後に再度確認する
+                # プレイヤーがいる場合は、point_upを実行する
+                player_list = re.search(r"online: (.*)", resp).group(1).split(", ")
+                await point_up(player_list)
+                # 5分後に再度確認する
                 await asyncio.sleep(300)
+                continue
         # 1分ごとに確認する
         await asyncio.sleep(60)
+
+
+# Minecraft Serverに接続していれば紐づいたDiscordのidにサーバーポイントを付与する
+async def point_up(minecraft_id_list):
+    # user_data.json からminecraft_idとdiscord_idの紐付けを確認する
+    user_data = {}
+    if os.path.exists("user_data.json"):
+        with open("user_data.json", "r") as f:
+            user_data = json.load(f)
+    # minecraft_idとdiscord_idの紐付けがあるかどうかを確認する
+    for minecraft_id, discord_id in user_data.items():
+        if minecraft_id in minecraft_id_list:
+            # user_data.json からdiscord_idに紐付いたポイントを取得する
+            point = 0
+            if os.path.exists("point_data.json"):
+                with open("point_data.json", "r") as f:
+                    point_data = json.load(f)
+                if discord_id in point_data:
+                    point = point_data[discord_id]
+            # ポイントを1増やす
+            point += 10
+            # user_data.json にminecraft_idとdiscord_idを書き込む
+            point_data = {}
+            if os.path.exists("point_data.json"):
+                with open("point_data.json", "r") as f:
+                    point_data = json.load(f)
+            point_data[discord_id] = point
+            with open("point_data.json", "w") as f:
+                json.dump(point_data, f)
+            # プレイヤーにポイントが付与されたことを個人メッセージで通知する
+            channel = client.get_channel(channel_id)
+            await channel.send(f"```fix\n{minecraft_id} has earned 10 point!\n```")
 
 
 def is_server_running():
@@ -327,6 +616,8 @@ def is_server_running():
 async def on_ready():
     await tree.sync()
     print(f"Logged in as {client.user.name}")
+    # discordサーバー参加者のdiscordのidをuser_data.jsonに書き込む
+    add_user_data.start()
     # Change presence to show server is not running
     await client.change_presence(activity=discord.Game(name=""))
     client.loop.create_task(check_player())
