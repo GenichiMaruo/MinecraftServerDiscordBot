@@ -1,10 +1,3 @@
-TOKEN = None
-SERVER_DIRECTORY = "./MINECRAFT/server"
-SERVER_NAME = "Minecraft Server"
-SERVER_SHELL = "run.bat"
-SERVER_LOG = "logs/latest.log"
-SERVER_PORT = 25565
-
 import os
 import re
 import signal
@@ -19,14 +12,20 @@ import mcrcon
 import discord
 from discord import app_commands
 
-channel_id = 1185881826527559710
+TOKEN = None
+CHANNEL_ID = 1185881826527559710
+
+SERVER_DIRECTORY = "./MINECRAFT/server"
+SERVER_NAME = "Minecraft Server"
+SERVER_SHELL = "run.bat"
+SERVER_LOG = "logs/latest.log"
+SERVER_ADDRESS = "localhost"
+SERVER_PORT = 25575
+SERVER_PASSWORD = "minecraft"
 
 intents = discord.Intents.default()
 client = discord.Client(intents=intents)
 tree = app_commands.CommandTree(client=client)
-server_address = "localhost"
-server_port = 25575
-server_password = "minecraft"
 last_execution_time = 0
 process = None
 
@@ -173,7 +172,7 @@ async def stop_server(interaction: discord.Interaction):
         sent_message = await channel.send("```fix\nStopping Minecraft server...\n```")
         # Code to stop the Minecraft server
         # use rcon to stop the server
-        with mcrcon.MCRcon(server_address, server_password, server_port) as mcr:
+        with mcrcon.MCRcon(SERVER_ADDRESS, SERVER_PASSWORD, SERVER_PORT) as mcr:
             resp = mcr.command("stop")
             print(resp)
         # Wait for server to stop
@@ -205,7 +204,7 @@ async def status_server(interaction: discord.Interaction):
 async def list_server(interaction: discord.Interaction):
     if is_server_running():
         # 参加人数を確認する
-        with mcrcon.MCRcon(server_address, server_password, server_port) as mcr:
+        with mcrcon.MCRcon(SERVER_ADDRESS, SERVER_PASSWORD, SERVER_PORT) as mcr:
             resp = mcr.command("list")
         # プレイヤーがいない場合
         if re.search(r"0 of a max of 20 players online", resp):
@@ -239,7 +238,7 @@ async def exit_bot(interaction: discord.Interaction):
 async def say_server(interaction: discord.Interaction, message: str):
     if is_server_running():
         # メッセージをサーバーに送信する
-        with mcrcon.MCRcon(server_address, server_password, server_port) as mcr:
+        with mcrcon.MCRcon(SERVER_ADDRESS, SERVER_PASSWORD, SERVER_PORT) as mcr:
             mcr.command(f"say {message}")
         await interaction.response.send_message("Message sent!")
     else:
@@ -255,7 +254,7 @@ async def say_server(interaction: discord.Interaction, message: str):
         if message[0] != "/":
             message = "/" + message
         # メッセージをサーバーに送信する
-        with mcrcon.MCRcon(server_address, server_password, server_port) as mcr:
+        with mcrcon.MCRcon(SERVER_ADDRESS, SERVER_PASSWORD, SERVER_PORT) as mcr:
             mcr.command(f"{message}")
         await interaction.response.send_message("Message sent!")
     else:
@@ -269,7 +268,7 @@ async def check_player():
         print("Checking for players...")
         if is_server_running():
             # プレイヤーが存在しているかどうかを確認する
-            with mcrcon.MCRcon(server_address, server_password, server_port) as mcr:
+            with mcrcon.MCRcon(SERVER_ADDRESS, SERVER_PASSWORD, SERVER_PORT) as mcr:
                 resp = mcr.command("list")
             # プレイヤーが存在しない場合は、5分後にサーバーを停止する
             if re.search(r"0 of a max of 20 players online", resp):
@@ -279,7 +278,7 @@ async def check_player():
                     "```txt\nNo players are playing on the server.\nIf no players join within 5 minutes, the server will be stopped.```"
                 )
                 await asyncio.sleep(300)
-                with mcrcon.MCRcon(server_address, server_password, server_port) as mcr:
+                with mcrcon.MCRcon(SERVER_ADDRESS, SERVER_PASSWORD, SERVER_PORT) as mcr:
                     resp = mcr.command("list")
                 # 5分後にもプレイヤーがいない場合は、サーバーを停止する
                 if (
@@ -288,7 +287,7 @@ async def check_player():
                 ):
                     # サーバーを停止するコマンドを実行する
                     with mcrcon.MCRcon(
-                        server_address, server_password, server_port
+                        SERVER_ADDRESS, SERVER_PASSWORD, SERVER_PORT
                     ) as mcr:
                         resp = mcr.command("stop")
                     # Wait for server to stop
@@ -297,7 +296,7 @@ async def check_player():
                         if time.time() - start_time > 60:
                             # one more try
                             with mcrcon.MCRcon(
-                                server_address, server_password, server_port
+                                SERVER_ADDRESS, SERVER_PASSWORD, SERVER_PORT
                             ) as mcr:
                                 resp = mcr.command("stop")
                             start_time = time.time()
@@ -317,7 +316,7 @@ def is_server_running():
     # Code to check if the Minecraft server is running
     # マイクラサーバーがオンラインかどうかmcrconで確認する
     try:
-        with mcrcon.MCRcon(server_address, server_password, server_port) as mcr:
+        with mcrcon.MCRcon(SERVER_ADDRESS, SERVER_PASSWORD, SERVER_PORT) as mcr:
             resp = mcr.command("list")
         return True
     except:
