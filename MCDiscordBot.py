@@ -1,15 +1,13 @@
+import asyncio
 import os
+import random
 import re
 import signal
-import time
 import subprocess
-import random
-
-import asyncio
-
-import mcrcon
+import time
 
 import discord
+import mcrcon
 from discord import app_commands
 
 TOKEN = None
