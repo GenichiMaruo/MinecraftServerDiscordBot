@@ -35,6 +35,14 @@ with open("config.json", "r") as f:
     server_password = data["minecraft_server_rcon_password"]
 os.chdir(SERVER_DIRECTORY)
 
+print("Starting Discord bot...")
+# configの内容を確認
+print(f"Discord token: {TOKEN}")
+print(f"Discord channel id: {channel_id}")
+print(f"Minecraft server ip: {server_address}")
+print(f"Minecraft server rcon port: {rcon_port}")
+print(f"Minecraft server rcon password: {server_password}")
+
 dice_emoji = [
     "<:dice_1:1186303558426038385>",
     "<:dice_2:1186303562163175565>",
@@ -228,7 +236,7 @@ async def list_server(interaction: discord.Interaction):
             player_count = len(player_list)
             # 表示のときは、改行を入れて見やすくする
             player_list = "\n".join(player_list)
-            resp = f"```fix\n{player_count} players are playing!\n{player_list}\n```"
+            resp = f"```fix\n{player_count} players are playing!\n------\n{player_list}\n```"
             await interaction.response.send_message(resp)
     else:
         await interaction.response.send_message("Minecraft server is not running!")
@@ -476,45 +484,6 @@ async def buy_item(interaction: discord.Interaction, item_id: str, amount: int =
                 return
 
 
-# サイコロでポイントを賭ける
-@tree.command(name="dicebet", description="Bet points on a dice roll")
-async def dice_bet(interaction: discord.Interaction, amount: int, num: int):
-    # registerされているかどうかを確認する
-    result = file_io.is_registered(interaction.user.id, JSON_FILE_NAME)
-    if not result:
-        await interaction.response.send_message("You are not registered!")
-        return
-    # ポイントが足りているかどうかを確認する
-    point = file_io.get_points(interaction.user.id, JSON_FILE_NAME)
-    if point < amount:
-        await interaction.response.send_message("You do not have enough points!")
-        return
-    # サイコロを振る
-    dice_list = []
-    for i in range(1):
-        dice_list.append(random.randint(1, 6))
-    await interaction.response.send_message(f"{interaction.user.mention} rolled!")
-    # discordのサイコロの絵文字を表示する
-    dice_resp = ""
-    for i in dice_list:
-        dice_resp += f"{dice_emoji[i-1]}"
-    await interaction.channel.send(dice_resp)
-    # サイコロの目が一致した場合
-    if dice_list[0] == num:
-        # ポイントを増やす
-        file_io.add_points(interaction.user.id, amount, JSON_FILE_NAME)
-        await interaction.channel.send(
-            f"```fix\n{interaction.user.name} won {amount} points!\n```"
-        )
-    # サイコロの目が一致しなかった場合
-    else:
-        # ポイントを減らす
-        file_io.add_points(interaction.user.id, -amount, JSON_FILE_NAME)
-        await interaction.channel.send(
-            f"```fix\n{interaction.user.name} lost {amount} points!\n```"
-        )
-
-
 # ポイントを渡す
 @tree.command(name="givepoint", description="Give points to a player")
 async def give_point(interaction: discord.Interaction, amount: int, user: discord.User):
@@ -534,6 +503,7 @@ async def give_point(interaction: discord.Interaction, amount: int, user: discor
         await interaction.response.send_message("The user is not registered!")
         return
     # ポイントを渡す
+    await interaction.response.send_message("Give Command Received!")
     file_io.add_points(interaction.user.id, -amount, JSON_FILE_NAME)
     file_io.add_points(user.id, amount, JSON_FILE_NAME)
     await interaction.channel.send(
@@ -547,15 +517,99 @@ async def give_point(interaction: discord.Interaction, amount: int, user: discor
 async def give_point_admin(
     interaction: discord.Interaction, amount: int, user: discord.User
 ):
+    # ポイントを渡す相手がregisterされているかどうかを確認する
+    result = file_io.is_registered(user.id, JSON_FILE_NAME)
+    if not result:
+        await interaction.response.send_message("The user is not registered!")
+        return
     # ポイントを渡す
+    await interaction.response.send_message("Give Command Received!")
     file_io.add_points(user.id, amount, JSON_FILE_NAME)
     await interaction.channel.send(
         f"```fix\n{interaction.user.name} gave {amount} points to {user.name}!\n```"
     )
 
 
+# 管理者のみが実行できる@everyoneにポイントを渡すコマンド
+@tree.command(name="givepoint_all", description="Give points to everyone")
+@app_commands.default_permissions(administrator=True)
+async def give_point_all(interaction: discord.Interaction, amount: int):
+    await interaction.response.send_message("Give Command Received!")
+    # ポイントを渡す
+    file_io.add_points_all(amount, JSON_FILE_NAME)
+    await interaction.channel.send(
+        f"```fix\n{interaction.user.name} gave {amount} points to everyone!\n```"
+    )
+
+
+# サイコロでポイントを賭ける
+@tree.command(
+    name="dicebet",
+    description="Bet points on a dice roll. If win, get [bet_amount*5] points",
+)
+async def dice_bet(interaction: discord.Interaction, amount: int, num: int):
+    # registerされているかどうかを確認する
+    result = file_io.is_registered(interaction.user.id, JSON_FILE_NAME)
+    if not result:
+        await interaction.response.send_message("You are not registered!")
+        return
+    # ポイントが足りているかどうかを確認する
+    point = file_io.get_points(interaction.user.id, JSON_FILE_NAME)
+    if point < amount:
+        await interaction.response.send_message("You do not have enough points!")
+        return
+    # 選択したサイコロの目が1~6の間にあるかどうかを確認する
+    if num < 1 or num > 6:
+        await interaction.response.send_message("Invalid number!")
+        return
+    # サイコロを振る
+    dice_list = []
+    for i in range(1):
+        dice_list.append(random.randint(1, 6))
+    # 選択したサイコロの目まで表示する
+    await interaction.response.send_message(f"{interaction.user.mention} rolled!")
+    await interaction.channel.send(
+        f"```fix\nYou chose {num}!\nBetting {amount} points!\n```"
+    )
+    # discordのサイコロの絵文字を表示する
+    dice_resp = ""
+    for i in dice_list:
+        dice_resp += f"{dice_emoji[i-1]}"
+    await interaction.channel.send(dice_resp)
+    # サイコロの目が一致した場合
+    if dice_list[0] == num:
+        # ポイントを増やす
+        file_io.add_points(interaction.user.id, amount * 5, JSON_FILE_NAME)
+        await interaction.channel.send(
+            f"```fix\n{interaction.user.name} won {amount*5} points!\n```"
+        )
+    # サイコロの目が一致しなかった場合
+    else:
+        # ポイントを減らす
+        file_io.add_points(interaction.user.id, -amount, JSON_FILE_NAME)
+        await interaction.channel.send(
+            f"```fix\n{interaction.user.name} lost {amount} points!\n```"
+        )
+        # 減らしたポイント分を全員に分配する
+        player_num = file_io.get_player_num(JSON_FILE_NAME)
+        if player_num > 1:
+            player_num -= 1
+            file_io.add_points_all(int(amount / player_num), JSON_FILE_NAME)
+            # 賭けをしたプレイヤーに追加された分を減らす
+            file_io.add_points(
+                interaction.user.id, -int(amount / player_num), JSON_FILE_NAME
+            )
+            # 全員に何ポイントずつ追加されたかを表示する
+            await interaction.channel.send(
+                f"```fix\n{int(amount / player_num)} points were added to everyone!\n```"
+            )
+
+
 # 複数のdiceの合計を賭ける
-@tree.command(name="dicebet2", description="Bet points on a dice roll")
+@tree.command(
+    name="dicebet2",
+    description="Bet points on a dice roll. If win, get [bet_amount*dice_count*5] points",
+)
 async def dice_bet2(
     interaction: discord.Interaction, amount: int, dice_count: int, num: int
 ):
@@ -569,22 +623,40 @@ async def dice_bet2(
     if point < amount:
         await interaction.response.send_message("You do not have enough points!")
         return
+    # 選択したサイコロの数が60以下かどうかを確認する
+    if dice_count > 60:
+        await interaction.response.send_message("Too many dice!")
+        return
+    if dice_count < 1:
+        await interaction.response.send_message("Too few dice!")
+        return
+    # 選択した合計値が1~dice_count*6の間にあるかどうかを確認する
+    if num < dice_count or num > dice_count * 6:
+        await interaction.response.send_message("Invalid number!")
+        return
     # サイコロを振る
     dice_list = []
     for i in range(dice_count):
         dice_list.append(random.randint(1, 6))
     await interaction.response.send_message(f"{interaction.user.mention} rolled!")
+    await interaction.channel.send(
+        f"```fix\nYou chose {num}!\nBetting {amount} points!\n```"
+    )
     # discordのサイコロの絵文字を表示する
     dice_resp = ""
     for i in dice_list:
         dice_resp += f"{dice_emoji[i-1]}"
     await interaction.channel.send(dice_resp)
+    # サイコロの合計を表示する
+    await interaction.channel.send(f"```fix\nSum: {sum(dice_list)}\n```")
     # サイコロの目が一致した場合
     if sum(dice_list) == num:
-        # ポイントを増やす
-        file_io.add_points(interaction.user.id, amount, JSON_FILE_NAME)
+        # ポイントを増やす（サイコロの数だけ増やす）
+        file_io.add_points(
+            interaction.user.id, int(amount * dice_count * 5), JSON_FILE_NAME
+        )
         await interaction.channel.send(
-            f"```fix\n{interaction.user.name} won {amount} points!\n```"
+            f"```fix\n{interaction.user.name} won {amount*dice_count*5} points!\n```"
         )
     # サイコロの目が一致しなかった場合
     else:
@@ -593,6 +665,91 @@ async def dice_bet2(
         await interaction.channel.send(
             f"```fix\n{interaction.user.name} lost {amount} points!\n```"
         )
+        # 減らしたポイント分を全員に分配する
+        player_num = file_io.get_player_num(JSON_FILE_NAME)
+        if player_num > 1:
+            player_num -= 1
+            file_io.add_points_all(int(amount / player_num), JSON_FILE_NAME)
+            # 賭けをしたプレイヤーに追加された分を減らす
+            file_io.add_points(
+                interaction.user.id, -int(amount / player_num), JSON_FILE_NAME
+            )
+            # 全員に何ポイントずつ追加されたかを表示する
+            await interaction.channel.send(
+                f"```fix\n{int(amount / player_num)} points were added to everyone!\n```"
+            )
+
+
+# 2個のサイコロの合計が丁か半かを賭ける
+@tree.command(
+    name="dicebet3",
+    description='Bet points on a dice roll. If win, get [bet_amount*2] points. You can choose "even" or "odd".',
+)
+async def dice_bet3(interaction: discord.Interaction, amount: int, choice: str):
+    # registerされているかどうかを確認する
+    result = file_io.is_registered(interaction.user.id, JSON_FILE_NAME)
+    if not result:
+        await interaction.response.send_message("You are not registered!")
+        return
+    # ポイントが足りているかどうかを確認する
+    point = file_io.get_points(interaction.user.id, JSON_FILE_NAME)
+    if point < amount:
+        await interaction.response.send_message("You do not have enough points!")
+        return
+    # 選択した合計値が"even"か"odd"かを確認する
+    if choice != "even" and choice != "odd":
+        await interaction.response.send_message("Invalid choice!")
+        return
+    # サイコロを振る
+    dice_list = []
+    for i in range(2):
+        dice_list.append(random.randint(1, 6))
+    await interaction.response.send_message(f"{interaction.user.mention} rolled!")
+    await interaction.channel.send(
+        f"```fix\nYou chose {choice}!\nBetting {amount} points!\n```"
+    )
+    # discordのサイコロの絵文字を表示する
+    dice_resp = ""
+    for i in dice_list:
+        dice_resp += f"{dice_emoji[i-1]}"
+    await interaction.channel.send(dice_resp)
+    # サイコロの合計が丁か半かを表示する
+    if sum(dice_list) % 2 == 0:
+        await interaction.channel.send(f"```fix\nSum: even\n```")
+    else:
+        await interaction.channel.send(f"```fix\nSum: odd\n```")
+    # サイコロの合計が丁か半かを確認する
+    if sum(dice_list) % 2 == 0 and choice == "even":
+        # ポイントを増やす
+        file_io.add_points(interaction.user.id, amount * 2, JSON_FILE_NAME)
+        await interaction.channel.send(
+            f"```fix\n{interaction.user.name} won {amount} points!\n```"
+        )
+    elif sum(dice_list) % 2 == 1 and choice == "odd":
+        # ポイントを増やす
+        file_io.add_points(interaction.user.id, amount * 2, JSON_FILE_NAME)
+        await interaction.channel.send(
+            f"```fix\n{interaction.user.name} won {amount} points!\n```"
+        )
+    else:
+        # ポイントを減らす
+        file_io.add_points(interaction.user.id, -amount, JSON_FILE_NAME)
+        await interaction.channel.send(
+            f"```fix\n{interaction.user.name} lost {amount} points!\n```"
+        )
+        # 減らしたポイント分を全員に分配する
+        player_num = file_io.get_player_num(JSON_FILE_NAME)
+        if player_num > 1:
+            player_num -= 1
+            file_io.add_points_all(int(amount / player_num), JSON_FILE_NAME)
+            # 賭けをしたプレイヤーに追加された分を減らす
+            file_io.add_points(
+                interaction.user.id, -int(amount / player_num), JSON_FILE_NAME
+            )
+            # 全員に何ポイントずつ追加されたかを表示する
+            await interaction.channel.send(
+                f"```fix\n{int(amount / player_num)} points were added to everyone!\n```"
+            )
 
 
 # Minecraft Server に接続しているプレイヤーを監視して、0人になったら5分後にサーバーを停止する
@@ -657,6 +814,7 @@ async def point_up(minecraft_id_list):
         discord_id = file_io.get_discord_id(minecraft_id, JSON_FILE_NAME)
         # プレイヤーが見つかった場合
         if discord_id is not None:
+            print(f"Found {minecraft_id}!")
             # discordサーバー参加者のdiscordのidにポイントを付与する
             file_io.add_points(discord_id, 10, JSON_FILE_NAME)
 
