@@ -100,6 +100,13 @@ async def help(interaction: discord.Interaction):
         + "/exit - Stops the Discord bot\n"
         + "/say - Says a message on the Minecraft server\n"
         + "/command - Sends a command to the Minecraft server\n"
+        + "/register - Registers you to the point system\n"
+        + "/link - Links your Minecraft account to your Discord account\n"
+        + "/check - Checks if your Minecraft account is linked to your Discord account\n"
+        + "/unlink - Unlinks your Minecraft account from your Discord account\n"
+        + "/point - Checks your server points\n"
+        + "/mcshop - Shows the shop\n"
+        + "/buy - Buy an item with your server points\n"
         + "```"
     )
 
