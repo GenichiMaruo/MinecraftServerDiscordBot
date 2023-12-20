@@ -4,6 +4,7 @@ SERVER_NAME = "Minecraft Server"
 SERVER_SHELL = "run.bat"
 SERVER_LOG = "logs/latest.log"
 SERVER_PORT = 25565
+JSON_FILE_NAME = "user_data.json"
 
 import os
 import re
@@ -13,32 +14,25 @@ import subprocess
 import random
 import json
 import file_io
-
 import asyncio
-
 import mcrcon
-
 import discord
 from discord import app_commands
-from discord.ext import tasks
-
-json_file_name = "user_data.json"
-
-channel_id = 1185881826527559710
 
 intents = discord.Intents.default()
 client = discord.Client(intents=intents)
 tree = app_commands.CommandTree(client=client)
-server_address = "localhost"
-server_port = 25575
-server_password = "minecraft"
 last_execution_time = 0
 process = None
-with open("server_id.txt", "r") as f:
-    server_id = int(f.read())
 
-# discord_token.txt からdiscord botのtokenを読み込む
-TOKEN = open("discord_token.txt", "r").read()
+# config.jsonからdiscordのtokenとchannel_idを読み込む
+with open("config.json", "r") as f:
+    data = json.load(f)
+    TOKEN = data["discord_token"]
+    channel_id = data["discord_channel_id"]
+    server_address = data["minecraft_server_ip"]
+    rcon_port = data["minecraft_server_rcon_port"]
+    server_password = data["minecraft_server_rcon_password"]
 os.chdir(SERVER_DIRECTORY)
 
 dice_emoji = [
@@ -181,7 +175,7 @@ async def stop_server(interaction: discord.Interaction):
         sent_message = await channel.send("```fix\nStopping Minecraft server...\n```")
         # Code to stop the Minecraft server
         # use rcon to stop the server
-        with mcrcon.MCRcon(server_address, server_password, server_port) as mcr:
+        with mcrcon.MCRcon(server_address, server_password, rcon_port) as mcr:
             resp = mcr.command("stop")
             print(resp)
         # Wait for server to stop
@@ -213,7 +207,7 @@ async def status_server(interaction: discord.Interaction):
 async def list_server(interaction: discord.Interaction):
     if is_server_running():
         # 参加人数を確認する
-        with mcrcon.MCRcon(server_address, server_password, server_port) as mcr:
+        with mcrcon.MCRcon(server_address, server_password, rcon_port) as mcr:
             resp = mcr.command("list")
         # プレイヤーがいない場合
         if re.search(r"0 of a max of 20 players online", resp):
@@ -247,7 +241,7 @@ async def exit_bot(interaction: discord.Interaction):
 async def say_server(interaction: discord.Interaction, message: str):
     if is_server_running():
         # メッセージをサーバーに送信する
-        with mcrcon.MCRcon(server_address, server_password, server_port) as mcr:
+        with mcrcon.MCRcon(server_address, server_password, rcon_port) as mcr:
             mcr.command(f"say {message}")
         await interaction.response.send_message("Message sent!")
     else:
@@ -263,11 +257,24 @@ async def say_server(interaction: discord.Interaction, message: str):
         if message[0] != "/":
             message = "/" + message
         # メッセージをサーバーに送信する
-        with mcrcon.MCRcon(server_address, server_password, server_port) as mcr:
+        with mcrcon.MCRcon(server_address, server_password, rcon_port) as mcr:
             mcr.command(f"{message}")
         await interaction.response.send_message("Message sent!")
     else:
         await interaction.response.send_message("Minecraft server is not running!")
+
+
+# Point Systemに登録する
+@tree.command(name="register", description="Registers you to the point system")
+async def register(interaction: discord.Interaction):
+    # user_data.json からdiscord_idの紐付けを確認する
+    result = file_io.is_registered(interaction.user.id, JSON_FILE_NAME)
+    if result:
+        await interaction.response.send_message("You are already registered!")
+    else:
+        # file_io.pyの関数を使ってdiscord_idを登録する
+        file_io.add_player_data(interaction.user.id, None, 0, JSON_FILE_NAME)
+        await interaction.response.send_message("Registration completed!")
 
 
 # MinecraftのidとDiscordのidを紐付ける
@@ -280,7 +287,7 @@ async def link_account(interaction: discord.Interaction, minecraft_id: str):
         await interaction.response.send_message("Minecraft server is not running!")
         return
     # Minecraftサーバーに接続して、プレイヤーの一覧を取得する
-    with mcrcon.MCRcon(server_address, server_password, server_port) as mcr:
+    with mcrcon.MCRcon(server_address, server_password, rcon_port) as mcr:
         resp = mcr.command("list")
     # プレイヤーがいない場合
     if re.search(r"0 of a max of 20 players online", resp):
@@ -301,7 +308,7 @@ async def link_account(interaction: discord.Interaction, minecraft_id: str):
             # プレイヤーの一覧にminecraft_idがある場合
             # サーバーにランダムな4桁の数字の個人メッセージを送信
             random_number = random.randint(1000, 9999)
-            with mcrcon.MCRcon(server_address, server_password, server_port) as mcr:
+            with mcrcon.MCRcon(server_address, server_password, rcon_port) as mcr:
                 mcr.command(
                     f'tellraw {minecraft_id} ["",{{"text":"Please send this number to the bot.","color":"yellow"}},{{"text":"\\n{random_number}","color":"aqua","bold":true}}]'
                 )
@@ -336,7 +343,7 @@ async def link_account(interaction: discord.Interaction, minecraft_id: str):
                 await dm.send("Linking failed! Invalid number!")
                 return
             # file_io.pyの関数を使ってminecraft_idとdiscord_idを紐付ける
-            file_io.link(interaction.user.id, minecraft_id, json_file_name)
+            file_io.link(interaction.user.id, minecraft_id, JSON_FILE_NAME)
             # プレイヤーに紐付けが完了したことをdmで通知する
             dm = await interaction.user.create_dm()
             await dm.send("Linking completed!")
@@ -358,7 +365,7 @@ async def link_account(interaction: discord.Interaction, minecraft_id: str):
 )
 async def check_account(interaction: discord.Interaction):
     # user_data.json からminecraft_idとdiscord_idの紐付けを確認する
-    result = file_io.is_linked(interaction.user.id, json_file_name)
+    result = file_io.is_linked(interaction.user.id, JSON_FILE_NAME)
     if result:
         await interaction.response.send_message("Your Minecraft ID is linked!")
     else:
@@ -372,10 +379,10 @@ async def check_account(interaction: discord.Interaction):
 )
 async def unlink_account(interaction: discord.Interaction):
     # user_data.json からminecraft_idとdiscord_idの紐付けを確認する
-    result = file_io.is_linked(interaction.user.id, json_file_name)
+    result = file_io.is_linked(interaction.user.id, JSON_FILE_NAME)
     if result:
         # file_io.pyの関数を使ってminecraft_idとdiscord_idの紐付けを解除する
-        file_io.link(interaction.user.id, None, json_file_name)
+        file_io.link(interaction.user.id, None, JSON_FILE_NAME)
         await interaction.response.send_message("Unlinking completed!")
     else:
         await interaction.response.send_message("Your Minecraft ID is not linked!")
@@ -385,7 +392,7 @@ async def unlink_account(interaction: discord.Interaction):
 @tree.command(name="point", description="Checks your server points")
 async def check_point(interaction: discord.Interaction):
     # ポイントを取得する
-    point = file_io.get_points(interaction.user.id, json_file_name)
+    point = file_io.get_points(interaction.user.id, JSON_FILE_NAME)
     await interaction.response.send_message(f"Your points: ```fix\n{point}\n```")
 
 
@@ -421,11 +428,11 @@ async def buy_item(interaction: discord.Interaction, item_id: str, amount: int =
         await interaction.response.send_message("Minecraft server is not running!")
         return
     # マイクラサーバーに接続して、プレイヤーの一覧を取得する
-    with mcrcon.MCRcon(server_address, server_password, server_port) as mcr:
+    with mcrcon.MCRcon(server_address, server_password, rcon_port) as mcr:
         resp = mcr.command("list")
     players = re.search(r"online: (.*)", resp).group(1).split(", ")
     # コマンド実行者のminecraft_idが紐づいているかどうかを確認する
-    minecraft_id = file_io.get_minecraft_id(interaction.user.id, json_file_name)
+    minecraft_id = file_io.get_minecraft_id(interaction.user.id, JSON_FILE_NAME)
     if minecraft_id is None:
         await interaction.response.send_message("Your Minecraft ID is not linked!")
         return
@@ -437,15 +444,15 @@ async def buy_item(interaction: discord.Interaction, item_id: str, amount: int =
     for item in items_list:
         if item["id"] == item_id:
             # discord_idに紐付いたポイントを取得する
-            point = file_io.get_points(interaction.user.id, json_file_name)
+            point = file_io.get_points(interaction.user.id, JSON_FILE_NAME)
             # ポイントが足りているかどうかを確認する
             if point >= item["price"] * amount:
                 # 購入者にアイテムを付与するコマンドをminecraftに送信する
-                with mcrcon.MCRcon(server_address, server_password, server_port) as mcr:
+                with mcrcon.MCRcon(server_address, server_password, rcon_port) as mcr:
                     mcr.command(f"give {minecraft_id} {item['item_command']} {amount}")
                 # ポイントを減らす
                 file_io.add_points(
-                    interaction.user.id, -item["price"] * amount, json_file_name
+                    interaction.user.id, -item["price"] * amount, JSON_FILE_NAME
                 )
                 # プレイヤーにアイテムが購入されたことをメッセージで通知する
                 await interaction.response.send_message("Purchase completed!")
@@ -462,17 +469,6 @@ async def buy_item(interaction: discord.Interaction, item_id: str, amount: int =
                 return
 
 
-# user_data.json にデータの無いdiscordサーバー参加者のdiscordのidを書き込む
-@tasks.loop(minutes=5)
-async def add_user_data():
-    # 現在サーバーに参加しているdiscordサーバー参加者のdiscordのidが登録されているかどうかを確認する
-    for member in client.get_all_members():
-        result = file_io.get_player_data(member.id, json_file_name)
-        if result is None:
-            # user_data.json にdiscordサーバー参加者のdiscordのidを書き込む
-            file_io.add_player_data(member.id, None, 0, json_file_name)
-
-
 # Minecraft Server に接続しているプレイヤーを監視して、0人になったら5分後にサーバーを停止する
 # 定期的に自動実行され、プレイヤーがいる場合はタイマーをリセットする。
 async def check_player():
@@ -480,7 +476,7 @@ async def check_player():
         print("Checking for players...")
         if is_server_running():
             # プレイヤーが存在しているかどうかを確認する
-            with mcrcon.MCRcon(server_address, server_password, server_port) as mcr:
+            with mcrcon.MCRcon(server_address, server_password, rcon_port) as mcr:
                 resp = mcr.command("list")
             # プレイヤーが存在しない場合は、5分後にサーバーを停止する
             if re.search(r"0 of a max of 20 players online", resp):
@@ -490,7 +486,7 @@ async def check_player():
                     "```txt\nNo players are playing on the server.\nIf no players join within 5 minutes, the server will be stopped.```"
                 )
                 await asyncio.sleep(300)
-                with mcrcon.MCRcon(server_address, server_password, server_port) as mcr:
+                with mcrcon.MCRcon(server_address, server_password, rcon_port) as mcr:
                     resp = mcr.command("list")
                 # 5分後にもプレイヤーがいない場合は、サーバーを停止する
                 if (
@@ -499,7 +495,7 @@ async def check_player():
                 ):
                     # サーバーを停止するコマンドを実行する
                     with mcrcon.MCRcon(
-                        server_address, server_password, server_port
+                        server_address, server_password, rcon_port
                     ) as mcr:
                         resp = mcr.command("stop")
                     # Wait for server to stop
@@ -508,7 +504,7 @@ async def check_player():
                         if time.time() - start_time > 60:
                             # one more try
                             with mcrcon.MCRcon(
-                                server_address, server_password, server_port
+                                server_address, server_password, rcon_port
                             ) as mcr:
                                 resp = mcr.command("stop")
                             start_time = time.time()
@@ -532,18 +528,18 @@ async def check_player():
 async def point_up(minecraft_id_list):
     # discordサーバー参加者からminecraft_id_listに含まれるプレイヤーを探す
     for minecraft_id in minecraft_id_list:
-        discord_id = file_io.get_discord_id(minecraft_id, json_file_name)
+        discord_id = file_io.get_discord_id(minecraft_id, JSON_FILE_NAME)
         # プレイヤーが見つかった場合
         if discord_id is not None:
             # discordサーバー参加者のdiscordのidにポイントを付与する
-            file_io.add_points(discord_id, 10, json_file_name)
+            file_io.add_points(discord_id, 10, JSON_FILE_NAME)
 
 
 def is_server_running():
     # Code to check if the Minecraft server is running
     # マイクラサーバーがオンラインかどうかmcrconで確認する
     try:
-        with mcrcon.MCRcon(server_address, server_password, server_port) as mcr:
+        with mcrcon.MCRcon(server_address, server_password, rcon_port) as mcr:
             resp = mcr.command("list")
         return True
     except:
@@ -554,8 +550,6 @@ def is_server_running():
 async def on_ready():
     await tree.sync()
     print(f"Logged in as {client.user.name}")
-    # discordサーバー参加者のdiscordのidをuser_data.jsonに書き込む
-    add_user_data.start()
     # Change presence to show server is not running
     await client.change_presence(activity=discord.Game(name=""))
     client.loop.create_task(check_player())
