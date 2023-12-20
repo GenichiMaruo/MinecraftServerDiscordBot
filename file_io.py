@@ -16,6 +16,9 @@ def add_player_data(discord_id, minecraft_id, points, file_path):
     except FileNotFoundError:
         # ファイルが存在しない場合は新しいデータを作成
         data = {"players": []}
+        # ファイルに書き込み
+        with open(file_path, "w") as file:
+            json.dump(data, file, indent=2)
 
     # 既存のデータに引数のdiscord_idのデータがあれば上書き
     for i, player in enumerate(data["players"]):
@@ -33,8 +36,12 @@ def add_player_data(discord_id, minecraft_id, points, file_path):
 
 def get_player_data(discord_id, file_path):
     # ファイルを読み込み
-    with open(file_path, "r") as file:
-        data = json.load(file)
+    try:
+        with open(file_path, "r") as file:
+            data = json.load(file)
+    except FileNotFoundError:
+        # ファイルが存在しない場合はNoneを返す
+        return None
 
     # プレイヤー情報を探す
     for player_data in data["players"]:
@@ -43,6 +50,15 @@ def get_player_data(discord_id, file_path):
 
     # 見つからなかった場合はNoneを返す
     return None
+
+
+# jsonに登録されているかどうかを確認する
+def is_registered(discord_id, file_path):
+    player_data = get_player_data(discord_id, file_path)
+    if player_data is None:
+        return False
+    else:
+        return True
 
 
 # マイクラIDが紐づいているかどうかを確認する
@@ -115,8 +131,4 @@ if __name__ == "__main__":
 
     if os.path.exists("test.json"):
         os.remove("test.json")
-    add_player_data(1, None, 0, "test.json")
-    add_player_data(2, "test2", 0, "test.json")
-    link(1, "test1", "test.json")
-    print(get_player_data(1, "test.json"))
-    print(get_player_data(2, "test.json"))
+    print(link(1, None, "test.json"))
