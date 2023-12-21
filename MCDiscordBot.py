@@ -683,7 +683,7 @@ async def dice_bet2(
 # 2個のサイコロの合計が丁か半かを賭ける
 @tree.command(
     name="dicebet3",
-    description='Bet points on a dice roll. If win, get [bet_amount*2] points. You can choose "even" or "odd".',
+    description='Bet points on a dice roll. If win, get [bet_amount] points. You can choose "even" or "odd".',
 )
 async def dice_bet3(interaction: discord.Interaction, amount: int, choice: str):
     # registerされているかどうかを確認する
@@ -721,13 +721,13 @@ async def dice_bet3(interaction: discord.Interaction, amount: int, choice: str):
     # サイコロの合計が丁か半かを確認する
     if sum(dice_list) % 2 == 0 and choice == "even":
         # ポイントを増やす
-        file_io.add_points(interaction.user.id, amount * 2, JSON_FILE_NAME)
+        file_io.add_points(interaction.user.id, amount, JSON_FILE_NAME)
         await interaction.channel.send(
             f"```fix\n{interaction.user.name} won {amount} points!\n```"
         )
     elif sum(dice_list) % 2 == 1 and choice == "odd":
         # ポイントを増やす
-        file_io.add_points(interaction.user.id, amount * 2, JSON_FILE_NAME)
+        file_io.add_points(interaction.user.id, amount, JSON_FILE_NAME)
         await interaction.channel.send(
             f"```fix\n{interaction.user.name} won {amount} points!\n```"
         )
