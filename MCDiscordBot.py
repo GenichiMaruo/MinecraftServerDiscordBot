@@ -23,7 +23,8 @@ intents = discord.Intents.default()
 client = discord.Client(intents=intents)
 tree = app_commands.CommandTree(client=client)
 last_execution_time = 0
-process = None
+# 起動処理実行中かどうかを確認する
+is_starting = False
 
 # config.jsonからdiscordのtokenとchannel_idを読み込む
 with open("config.json", "r") as f:
@@ -82,13 +83,13 @@ async def dice(interaction: discord.Interaction, num: int = 1):
     for i in range(num):
         dice_list.append(random.randint(1, 6))
     # サイコロの目を表示する
-    dice_str = ", ".join([str(i) for i in dice_list])
-    await interaction.response.send_message(f"{interaction.user.mention} rolled!")
+    resp = f"{interaction.user.mention} rolled!\n"
     # discordのサイコロの絵文字を表示する
     dice_resp = ""
     for i in dice_list:
         dice_resp += f"{dice_emoji[i-1]}"
-    await interaction.channel.send(dice_resp)
+    resp += dice_resp
+    await interaction.response.send_message(resp)
 
 
 # ヘルプコマンド
@@ -123,12 +124,17 @@ async def help(interaction: discord.Interaction):
 async def start_server(interaction: discord.Interaction):
     global last_execution_time
     global process
+    global is_starting
     channel = interaction.channel
     # 2分以内に実行された場合は、実行しない
     if time.time() - last_execution_time < 120:
         await interaction.response.send_message(
             "Please wait 2 minutes before starting the server again!"
         )
+        return
+    # 起動処理実行中の場合は、実行しない
+    if is_starting:
+        await interaction.response.send_message("Starting is in progress!")
         return
     # if minecraft server is already running
     if is_server_running():
@@ -139,6 +145,7 @@ async def start_server(interaction: discord.Interaction):
         await interaction.response.send_message("Start Command Received!")
         sent_message = await channel.send("```fix\nStarting Minecraft server...\n```")
         await client.change_presence(activity=discord.Game(name="Starting..."))
+        is_starting = True
         last_execution_time = time.time()
         # Start the Minecraft server
         success = await start_process()
@@ -149,12 +156,12 @@ async def start_server(interaction: discord.Interaction):
             )
             return
         await sent_message.edit(content="```fix\nMinecraft server started!\n```")
+        is_starting = False
         # Change presence to show server is running
         await client.change_presence(activity=discord.Game(name=SERVER_NAME))
 
 
 async def start_process():
-    global process
     # shell scriptを実行して、サーバーを起動する
     process = subprocess.Popen(
         SERVER_SHELL,
@@ -433,7 +440,7 @@ async def show_shop(interaction: discord.Interaction):
 
 # サーバーポイントでマイクラのアイテムを購入する
 @tree.command(name="buy", description="Buy an item with your server points")
-async def buy_item(interaction: discord.Interaction, item_id: str, amount: int = 1):
+async def buy_item(interaction: discord.Interaction, item_id: int, amount: int = 1):
     # マイナスの個数を購入しようとしていないかどうかを確認する
     if amount < 0:
         await interaction.response.send_message("You cannot buy minus items!")
@@ -441,7 +448,7 @@ async def buy_item(interaction: discord.Interaction, item_id: str, amount: int =
     # JSONからアイテムの情報を読み込む
     with open("shop_list.json", "r") as f:
         items_data = json.load(f)
-    items_list = items_data.get("items", [])
+    items_list = items_data["items"]  # "items"キーのリストを取得
     # マイクラサーバーが起動しているかどうかを確認する
     if not is_server_running():
         await interaction.response.send_message("Minecraft server is not running!")
@@ -495,6 +502,7 @@ async def buy_item(interaction: discord.Interaction, item_id: str, amount: int =
                     "You do not have enough points!"
                 )
                 return
+    await interaction.response.send_message("Invalid item ID!")
 
 
 # ポイントを渡す
@@ -592,29 +600,22 @@ async def dice_bet(interaction: discord.Interaction, amount: int, num: int):
     for i in range(1):
         dice_list.append(random.randint(1, 6))
     # 選択したサイコロの目まで表示する
-    await interaction.response.send_message(f"{interaction.user.mention} rolled!")
-    await interaction.channel.send(
-        f"```fix\nYou chose {num}!\nBetting {amount} points!\n```"
-    )
+    resp = f"{interaction.user.mention} rolled!\n```fix\nYou chose {num}!\nBetting {amount} points!\n```"
     # discordのサイコロの絵文字を表示する
     dice_resp = ""
     for i in dice_list:
         dice_resp += f"{dice_emoji[i-1]}"
-    await interaction.channel.send(dice_resp)
+    resp += dice_resp
     # サイコロの目が一致した場合
     if dice_list[0] == num:
         # ポイントを増やす
         file_io.add_points(interaction.user.id, amount * 5, JSON_FILE_NAME)
-        await interaction.channel.send(
-            f"```fix\n{interaction.user.name} won {amount*5} points!\n```"
-        )
+        resp += f"\n```fix\n{interaction.user.name} won {amount*5} points!\n```"
     # サイコロの目が一致しなかった場合
     else:
         # ポイントを減らす
         file_io.add_points(interaction.user.id, -amount, JSON_FILE_NAME)
-        await interaction.channel.send(
-            f"```fix\n{interaction.user.name} lost {amount} points!\n```"
-        )
+        resp += f"\n```fix\n{interaction.user.name} lost {amount} points!\n```"
         # 減らしたポイント分を全員に分配する
         player_num = file_io.get_player_num(JSON_FILE_NAME)
         if player_num > 1:
@@ -625,9 +626,8 @@ async def dice_bet(interaction: discord.Interaction, amount: int, num: int):
                 interaction.user.id, -int(amount / player_num), JSON_FILE_NAME
             )
             # 全員に何ポイントずつ追加されたかを表示する
-            await interaction.channel.send(
-                f"```fix\n{int(amount / player_num)} points were added to everyone!\n```"
-            )
+            resp += f"```fix\n{int(amount / player_num)} points were added to everyone!\n```"
+    await interaction.response.send_message(resp)
 
 
 # 複数のdiceの合計を賭ける
@@ -667,33 +667,26 @@ async def dice_bet2(
     dice_list = []
     for i in range(dice_count):
         dice_list.append(random.randint(1, 6))
-    await interaction.response.send_message(f"{interaction.user.mention} rolled!")
-    await interaction.channel.send(
-        f"```fix\nYou chose {num}!\nBetting {amount} points!\n```"
-    )
+    resp = f"{interaction.user.mention} rolled!\n```fix\nYou chose {num}!\nBetting {amount} points!\n```"
     # discordのサイコロの絵文字を表示する
     dice_resp = ""
     for i in dice_list:
         dice_resp += f"{dice_emoji[i-1]}"
-    await interaction.channel.send(dice_resp)
+    resp += dice_resp
     # サイコロの合計を表示する
-    await interaction.channel.send(f"```fix\nSum: {sum(dice_list)}\n```")
+    resp += f"\n```fix\nSum: {sum(dice_list)}\n"
     # サイコロの目が一致した場合
     if sum(dice_list) == num:
         # ポイントを増やす（サイコロの数だけ増やす）
         file_io.add_points(
             interaction.user.id, int(amount * dice_count * 5), JSON_FILE_NAME
         )
-        await interaction.channel.send(
-            f"```fix\n{interaction.user.name} won {amount*dice_count*5} points!\n```"
-        )
+        resp += f"{interaction.user.name} won {amount*dice_count*5} points!\n```"
     # サイコロの目が一致しなかった場合
     else:
         # ポイントを減らす
         file_io.add_points(interaction.user.id, -amount, JSON_FILE_NAME)
-        await interaction.channel.send(
-            f"```fix\n{interaction.user.name} lost {amount} points!\n```"
-        )
+        resp += f"{interaction.user.name} lost {amount} points!\n```"
         # 減らしたポイント分を全員に分配する
         player_num = file_io.get_player_num(JSON_FILE_NAME)
         if player_num > 1:
@@ -704,9 +697,8 @@ async def dice_bet2(
                 interaction.user.id, -int(amount / player_num), JSON_FILE_NAME
             )
             # 全員に何ポイントずつ追加されたかを表示する
-            await interaction.channel.send(
-                f"```fix\n{int(amount / player_num)} points were added to everyone!\n```"
-            )
+            resp += f"```fix\n{int(amount / player_num)} points were added to everyone!\n```"
+    await interaction.response.send_message(resp)
 
 
 # 2個のサイコロの合計が丁か半かを賭ける
@@ -737,39 +729,30 @@ async def dice_bet3(interaction: discord.Interaction, amount: int, choice: str):
     dice_list = []
     for i in range(2):
         dice_list.append(random.randint(1, 6))
-    await interaction.response.send_message(f"{interaction.user.mention} rolled!")
-    await interaction.channel.send(
-        f"```fix\nYou chose {choice}!\nBetting {amount} points!\n```"
-    )
+    resp = f"{interaction.user.mention} rolled!\n```fix\nYou chose {choice}!\nBetting {amount} points!\n```"
     # discordのサイコロの絵文字を表示する
     dice_resp = ""
     for i in dice_list:
         dice_resp += f"{dice_emoji[i-1]}"
-    await interaction.channel.send(dice_resp)
+    resp += dice_resp
     # サイコロの合計が丁か半かを表示する
     if sum(dice_list) % 2 == 0:
-        await interaction.channel.send(f"```fix\nSum: even\n```")
+        resp += f"\n```fix\nSum: even\n"
     else:
-        await interaction.channel.send(f"```fix\nSum: odd\n```")
+        resp += f"\n```fix\nSum: odd\n"
     # サイコロの合計が丁か半かを確認する
     if sum(dice_list) % 2 == 0 and choice == "even":
         # ポイントを増やす
         file_io.add_points(interaction.user.id, amount, JSON_FILE_NAME)
-        await interaction.channel.send(
-            f"```fix\n{interaction.user.name} won {amount} points!\n```"
-        )
+        resp += f"{interaction.user.name} won {amount} points!\n```"
     elif sum(dice_list) % 2 == 1 and choice == "odd":
         # ポイントを増やす
         file_io.add_points(interaction.user.id, amount, JSON_FILE_NAME)
-        await interaction.channel.send(
-            f"```fix\n{interaction.user.name} won {amount} points!\n```"
-        )
+        resp += f"{interaction.user.name} won {amount} points!\n```"
     else:
         # ポイントを減らす
         file_io.add_points(interaction.user.id, -amount, JSON_FILE_NAME)
-        await interaction.channel.send(
-            f"```fix\n{interaction.user.name} lost {amount} points!\n```"
-        )
+        resp += f"{interaction.user.name} lost {amount} points!\n```"
         # 減らしたポイント分を全員に分配する
         player_num = file_io.get_player_num(JSON_FILE_NAME)
         if player_num > 1:
@@ -780,17 +763,19 @@ async def dice_bet3(interaction: discord.Interaction, amount: int, choice: str):
                 interaction.user.id, -int(amount / player_num), JSON_FILE_NAME
             )
             # 全員に何ポイントずつ追加されたかを表示する
-            await interaction.channel.send(
-                f"```fix\n{int(amount / player_num)} points were added to everyone!\n```"
-            )
+            resp += f"```fix\n{int(amount / player_num)} points were added to everyone!\n```"
+    await interaction.response.send_message(resp)
 
 
 # Minecraft Server に接続しているプレイヤーを監視して、0人になったら5分後にサーバーを停止する
 # 定期的に自動実行され、プレイヤーがいる場合はタイマーをリセットする。
 async def check_player():
+    global is_starting
     while True:
         print("Checking for players...")
         if is_server_running():
+            # アクティビティを変更して、サーバーが起動していることを表示する
+            await client.change_presence(activity=discord.Game(name=SERVER_NAME))
             # プレイヤーが存在しているかどうかを確認する
             with mcrcon.MCRcon(server_address, server_password, rcon_port) as mcr:
                 resp = mcr.command("list")
@@ -798,9 +783,8 @@ async def check_player():
             if re.search(r"0 of a max of 20 players online", resp):
                 # サーバーにプレイヤーがいないことをdiscordに通知する
                 channel = client.get_channel(channel_id)
-                await channel.send(
-                    "```txt\nNo players are playing on the server.\nIf no players join within 5 minutes, the server will be stopped.```"
-                )
+                if channel is not None:
+                    await channel.send("```fix\nNo players are playing!\n```")
                 await asyncio.sleep(300)
                 with mcrcon.MCRcon(server_address, server_password, rcon_port) as mcr:
                     resp = mcr.command("list")
@@ -828,7 +812,8 @@ async def check_player():
                     # Change presence to show server is not running
                     await client.change_presence(activity=discord.Game(name=""))
                     # サーバーが停止したことをdiscordに通知する
-                    await channel.send("```fix\nMinecraft server stopped!\n```")
+                    if channel is not None:
+                        await channel.send("```fix\nServer stopped!\n```")
             else:
                 # プレイヤーがいる場合は、point_upを実行する
                 player_list = re.search(r"online: (.*)", resp).group(1).split(", ")
@@ -836,6 +821,12 @@ async def check_player():
                 # 5分後に再度確認する
                 await asyncio.sleep(300)
                 continue
+        elif is_starting:
+            # サーバーが起動中の場合は、アクティビティを変更して、サーバーが起動中であることを表示する
+            await client.change_presence(activity=discord.Game(name="Starting..."))
+        else:
+            # アクティビティを変更して、サーバーが停止していることを表示する
+            await client.change_presence(activity=discord.Game(name=""))
         # 1分ごとに確認する
         await asyncio.sleep(60)
 
