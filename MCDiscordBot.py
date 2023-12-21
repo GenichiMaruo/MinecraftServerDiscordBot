@@ -467,8 +467,17 @@ async def buy_item(interaction: discord.Interaction, item_id: str, amount: int =
             # ポイントが足りているかどうかを確認する
             if point >= item["price"] * amount:
                 # 購入者にアイテムを付与するコマンドをminecraftに送信する
+                print(
+                    f"Sending command: give {minecraft_id} {item['item_command']} {amount}"
+                )
                 with mcrcon.MCRcon(server_address, server_password, rcon_port) as mcr:
                     mcr.command(f"give {minecraft_id} {item['item_command']} {amount}")
+                # 成功しているかどうかを確認する
+                with mcrcon.MCRcon(server_address, server_password, rcon_port) as mcr:
+                    resp = mcr.command(f"clear {minecraft_id} {item['item_command']} 0")
+                if re.search(r"Cleared 0 items", resp):
+                    await interaction.response.send_message("Purchase failed!")
+                    return
                 # ポイントを減らす
                 file_io.add_points(
                     interaction.user.id, -item["price"] * amount, JSON_FILE_NAME
