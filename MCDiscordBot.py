@@ -434,6 +434,10 @@ async def show_shop(interaction: discord.Interaction):
 # サーバーポイントでマイクラのアイテムを購入する
 @tree.command(name="buy", description="Buy an item with your server points")
 async def buy_item(interaction: discord.Interaction, item_id: str, amount: int = 1):
+    # マイナスの個数を購入しようとしていないかどうかを確認する
+    if amount < 0:
+        await interaction.response.send_message("You cannot buy minus items!")
+        return
     # JSONからアイテムの情報を読み込む
     with open("shop_list.json", "r") as f:
         items_data = json.load(f)
@@ -487,6 +491,14 @@ async def buy_item(interaction: discord.Interaction, item_id: str, amount: int =
 # ポイントを渡す
 @tree.command(name="givepoint", description="Give points to a player")
 async def give_point(interaction: discord.Interaction, amount: int, user: discord.User):
+    # 自分にポイントを渡そうとしていないかどうかを確認する
+    if interaction.user.id == user.id:
+        await interaction.response.send_message("You cannot give points to yourself!")
+        return
+    # minusのポイントを渡そうとしていないかどうかを確認する
+    if amount < 0:
+        await interaction.response.send_message("You cannot give minus points!")
+        return
     # registerされているかどうかを確認する
     result = file_io.is_registered(interaction.user.id, JSON_FILE_NAME)
     if not result:
@@ -548,6 +560,10 @@ async def give_point_all(interaction: discord.Interaction, amount: int):
     description="Bet points on a dice roll. If win, get [bet_amount*5] points",
 )
 async def dice_bet(interaction: discord.Interaction, amount: int, num: int):
+    # minusのポイントを賭けようとしていないかどうかを確認する
+    if amount < 0:
+        await interaction.response.send_message("You cannot bet minus points!")
+        return
     # registerされているかどうかを確認する
     result = file_io.is_registered(interaction.user.id, JSON_FILE_NAME)
     if not result:
@@ -613,6 +629,10 @@ async def dice_bet(interaction: discord.Interaction, amount: int, num: int):
 async def dice_bet2(
     interaction: discord.Interaction, amount: int, dice_count: int, num: int
 ):
+    # minusのポイントを賭けようとしていないかどうかを確認する
+    if amount < 0:
+        await interaction.response.send_message("You cannot bet minus points!")
+        return
     # registerされているかどうかを確認する
     result = file_io.is_registered(interaction.user.id, JSON_FILE_NAME)
     if not result:
@@ -683,9 +703,13 @@ async def dice_bet2(
 # 2個のサイコロの合計が丁か半かを賭ける
 @tree.command(
     name="dicebet3",
-    description='Bet points on a dice roll. If win, get [bet_amount*2] points. You can choose "even" or "odd".',
+    description='Bet points on a dice roll. If win, get [bet_amount] points. You can choose "even" or "odd".',
 )
 async def dice_bet3(interaction: discord.Interaction, amount: int, choice: str):
+    # minusのポイントを賭けようとしていないかどうかを確認する
+    if amount < 0:
+        await interaction.response.send_message("You cannot bet minus points!")
+        return
     # registerされているかどうかを確認する
     result = file_io.is_registered(interaction.user.id, JSON_FILE_NAME)
     if not result:
@@ -721,13 +745,13 @@ async def dice_bet3(interaction: discord.Interaction, amount: int, choice: str):
     # サイコロの合計が丁か半かを確認する
     if sum(dice_list) % 2 == 0 and choice == "even":
         # ポイントを増やす
-        file_io.add_points(interaction.user.id, amount * 2, JSON_FILE_NAME)
+        file_io.add_points(interaction.user.id, amount, JSON_FILE_NAME)
         await interaction.channel.send(
             f"```fix\n{interaction.user.name} won {amount} points!\n```"
         )
     elif sum(dice_list) % 2 == 1 and choice == "odd":
         # ポイントを増やす
-        file_io.add_points(interaction.user.id, amount * 2, JSON_FILE_NAME)
+        file_io.add_points(interaction.user.id, amount, JSON_FILE_NAME)
         await interaction.channel.send(
             f"```fix\n{interaction.user.name} won {amount} points!\n```"
         )
