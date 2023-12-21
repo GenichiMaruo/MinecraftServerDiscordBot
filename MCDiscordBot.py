@@ -4,6 +4,7 @@ SERVER_NAME = "Minecraft Server"
 SERVER_SHELL = "run.bat"
 SERVER_LOG = "logs/latest.log"
 SERVER_PORT = 25565
+JSON_FILE_NAME = "user_data.json"
 
 import os
 import re
@@ -11,28 +12,37 @@ import signal
 import time
 import subprocess
 import random
-
+import json
+import file_io
 import asyncio
-
 import mcrcon
-
 import discord
 from discord import app_commands
-
-channel_id = 1185881826527559710
 
 intents = discord.Intents.default()
 client = discord.Client(intents=intents)
 tree = app_commands.CommandTree(client=client)
-server_address = "localhost"
-server_port = 25575
-server_password = "minecraft"
 last_execution_time = 0
-process = None
+# 起動処理実行中かどうかを確認する
+is_starting = False
 
-# discord_token.txt からdiscord botのtokenを読み込む
-TOKEN = open("discord_token.txt", "r").read()
+# config.jsonからdiscordのtokenとchannel_idを読み込む
+with open("config.json", "r") as f:
+    data = json.load(f)
+    TOKEN = data["discord_token"]
+    channel_id = data["discord_channel_id"]
+    server_address = data["minecraft_server_ip"]
+    rcon_port = data["minecraft_server_rcon_port"]
+    server_password = data["minecraft_server_rcon_password"]
 os.chdir(SERVER_DIRECTORY)
+
+print("Starting Discord bot...")
+# configの内容を確認
+print(f"Discord token: {TOKEN}")
+print(f"Discord channel id: {channel_id}")
+print(f"Minecraft server ip: {server_address}")
+print(f"Minecraft server rcon port: {rcon_port}")
+print(f"Minecraft server rcon password: {server_password}")
 
 dice_emoji = [
     "<:dice_1:1186303558426038385>",
@@ -73,13 +83,13 @@ async def dice(interaction: discord.Interaction, num: int = 1):
     for i in range(num):
         dice_list.append(random.randint(1, 6))
     # サイコロの目を表示する
-    dice_str = ", ".join([str(i) for i in dice_list])
-    await interaction.response.send_message(f"{interaction.user.mention} rolled!")
+    resp = f"{interaction.user.mention} rolled!\n"
     # discordのサイコロの絵文字を表示する
     dice_resp = ""
     for i in dice_list:
         dice_resp += f"{dice_emoji[i-1]}"
-    await interaction.channel.send(dice_resp)
+    resp += dice_resp
+    await interaction.response.send_message(resp)
 
 
 # ヘルプコマンド
@@ -99,6 +109,13 @@ async def help(interaction: discord.Interaction):
         + "/exit - Stops the Discord bot\n"
         + "/say - Says a message on the Minecraft server\n"
         + "/command - Sends a command to the Minecraft server\n"
+        + "/register - Registers you to the point system\n"
+        + "/link - Links your Minecraft account to your Discord account\n"
+        + "/check - Checks if your Minecraft account is linked to your Discord account\n"
+        + "/unlink - Unlinks your Minecraft account from your Discord account\n"
+        + "/point - Checks your server points\n"
+        + "/mcshop - Shows the shop\n"
+        + "/buy - Buy an item with your server points\n"
         + "```"
     )
 
@@ -107,12 +124,17 @@ async def help(interaction: discord.Interaction):
 async def start_server(interaction: discord.Interaction):
     global last_execution_time
     global process
+    global is_starting
     channel = interaction.channel
     # 2分以内に実行された場合は、実行しない
     if time.time() - last_execution_time < 120:
         await interaction.response.send_message(
             "Please wait 2 minutes before starting the server again!"
         )
+        return
+    # 起動処理実行中の場合は、実行しない
+    if is_starting:
+        await interaction.response.send_message("Starting is in progress!")
         return
     # if minecraft server is already running
     if is_server_running():
@@ -122,21 +144,24 @@ async def start_server(interaction: discord.Interaction):
     else:
         await interaction.response.send_message("Start Command Received!")
         sent_message = await channel.send("```fix\nStarting Minecraft server...\n```")
+        await client.change_presence(activity=discord.Game(name="Starting..."))
+        is_starting = True
         last_execution_time = time.time()
         # Start the Minecraft server
         success = await start_process()
         if not success:
+            await client.change_presence(activity=discord.Game(name=""))
             await sent_message.edit(
                 content="```arm\nMinecraft server failed to start!\n```"
             )
             return
         await sent_message.edit(content="```fix\nMinecraft server started!\n```")
+        is_starting = False
         # Change presence to show server is running
         await client.change_presence(activity=discord.Game(name=SERVER_NAME))
 
 
 async def start_process():
-    global process
     # shell scriptを実行して、サーバーを起動する
     process = subprocess.Popen(
         SERVER_SHELL,
@@ -172,7 +197,7 @@ async def stop_server(interaction: discord.Interaction):
         sent_message = await channel.send("```fix\nStopping Minecraft server...\n```")
         # Code to stop the Minecraft server
         # use rcon to stop the server
-        with mcrcon.MCRcon(server_address, server_password, server_port) as mcr:
+        with mcrcon.MCRcon(server_address, server_password, rcon_port) as mcr:
             resp = mcr.command("stop")
             print(resp)
         # Wait for server to stop
@@ -204,7 +229,7 @@ async def status_server(interaction: discord.Interaction):
 async def list_server(interaction: discord.Interaction):
     if is_server_running():
         # 参加人数を確認する
-        with mcrcon.MCRcon(server_address, server_password, server_port) as mcr:
+        with mcrcon.MCRcon(server_address, server_password, rcon_port) as mcr:
             resp = mcr.command("list")
         # プレイヤーがいない場合
         if re.search(r"0 of a max of 20 players online", resp):
@@ -218,7 +243,7 @@ async def list_server(interaction: discord.Interaction):
             player_count = len(player_list)
             # 表示のときは、改行を入れて見やすくする
             player_list = "\n".join(player_list)
-            resp = f"```fix\n{player_count} players are playing!\n{player_list}\n```"
+            resp = f"```fix\n{player_count} players are playing!\n------\n{player_list}\n```"
             await interaction.response.send_message(resp)
     else:
         await interaction.response.send_message("Minecraft server is not running!")
@@ -238,7 +263,7 @@ async def exit_bot(interaction: discord.Interaction):
 async def say_server(interaction: discord.Interaction, message: str):
     if is_server_running():
         # メッセージをサーバーに送信する
-        with mcrcon.MCRcon(server_address, server_password, server_port) as mcr:
+        with mcrcon.MCRcon(server_address, server_password, rcon_port) as mcr:
             mcr.command(f"say {message}")
         await interaction.response.send_message("Message sent!")
     else:
@@ -254,31 +279,514 @@ async def say_server(interaction: discord.Interaction, message: str):
         if message[0] != "/":
             message = "/" + message
         # メッセージをサーバーに送信する
-        with mcrcon.MCRcon(server_address, server_password, server_port) as mcr:
+        with mcrcon.MCRcon(server_address, server_password, rcon_port) as mcr:
             mcr.command(f"{message}")
         await interaction.response.send_message("Message sent!")
     else:
         await interaction.response.send_message("Minecraft server is not running!")
 
 
+# Point Systemに登録する
+@tree.command(name="register", description="Registers you to the point system")
+async def register(interaction: discord.Interaction):
+    # user_data.json からdiscord_idの紐付けを確認する
+    result = file_io.is_registered(interaction.user.id, JSON_FILE_NAME)
+    if result:
+        await interaction.response.send_message("You are already registered!")
+    else:
+        # file_io.pyの関数を使ってdiscord_idを登録する
+        file_io.add_player_data(interaction.user.id, None, 0, JSON_FILE_NAME)
+        await interaction.response.send_message("Registration completed!")
+
+
+# MinecraftのidとDiscordのidを紐付ける
+@tree.command(
+    name="link", description="Links your Minecraft account to your Discord account"
+)
+async def link_account(interaction: discord.Interaction, minecraft_id: str):
+    # Minecraftサーバーが起動しているかどうかを確認する
+    if not is_server_running():
+        await interaction.response.send_message("Minecraft server is not running!")
+        return
+    # Minecraftサーバーに接続して、プレイヤーの一覧を取得する
+    with mcrcon.MCRcon(server_address, server_password, rcon_port) as mcr:
+        resp = mcr.command("list")
+    # プレイヤーがいない場合
+    if re.search(r"0 of a max of 20 players online", resp):
+        await interaction.response.send_message(
+            "Linking failed! No players are playing!"
+        )
+    # プレイヤーがいる場合
+    else:
+        await interaction.response.send_message(
+            "Link Command Received! Please wait a moment..."
+        )
+        # プレイヤーの一覧を取得する。online: のあとの文字列がプレイヤーの一覧
+        player_list = re.search(r"online: (.*)", resp).group(1)
+        # プレイヤーの一覧を改行で区切って、リストに格納する
+        player_list = player_list.split(", ")
+        # プレイヤーの一覧にminecraft_idがあるかどうかを確認する
+        if minecraft_id in player_list:
+            # プレイヤーの一覧にminecraft_idがある場合
+            # サーバーにランダムな4桁の数字の個人メッセージを送信
+            random_number = random.randint(1000, 9999)
+            with mcrcon.MCRcon(server_address, server_password, rcon_port) as mcr:
+                mcr.command(
+                    f'tellraw {minecraft_id} ["",{{"text":"Please send this number to the bot.","color":"yellow"}},{{"text":"\\n{random_number}","color":"aqua","bold":true}}]'
+                )
+
+            # プレイヤーからの個人メッセージを待つ
+            def check(m):
+                return (
+                    m.author.id == interaction.user.id
+                    and m.channel.type == discord.ChannelType.private
+                )
+
+            try:
+                # dmを作成し、個人にメッセージを送信する
+                dm = await interaction.user.create_dm()
+                # マイクラ内に送られた４桁の数字を入力してもらう
+                await dm.send(
+                    "Please send the 4-digit number that was sent to you in Minecraft!"
+                )
+                msg = await client.wait_for("message", check=check, timeout=60)
+            except asyncio.TimeoutError:
+                dm = await interaction.user.create_dm()
+                await dm.send("Linking failed! Timeout!")
+                return
+            # プレイヤーからの個人メッセージが4桁の数字であるかどうかを確認する
+            try:
+                msg_number = int(msg.content)
+                if msg_number != random_number:
+                    # value errorを発生させる
+                    raise ValueError
+            except ValueError:
+                dm = await interaction.user.create_dm()
+                await dm.send("Linking failed! Invalid number!")
+                return
+            # file_io.pyの関数を使ってminecraft_idとdiscord_idを紐付ける
+            file_io.link(interaction.user.id, minecraft_id, JSON_FILE_NAME)
+            # プレイヤーに紐付けが完了したことをdmで通知する
+            dm = await interaction.user.create_dm()
+            await dm.send("Linking completed!")
+            # プレイヤーに紐付けが完了したことをdiscordに通知する
+            await interaction.channel.send(
+                f"```fix\n{interaction.user.name} linked {minecraft_id}!\n```"
+            )
+        else:
+            # プレイヤーの一覧にminecraft_idがない場合
+            await interaction.channel.send(
+                "Linking failed! You are not logged in to Minecraft!"
+            )
+
+
+# MinecraftのidとDiscordのidが紐付いているかどうかを確認する
+@tree.command(
+    name="check",
+    description="Checks if your Minecraft account is linked to your Discord account",
+)
+async def check_account(interaction: discord.Interaction):
+    # user_data.json からminecraft_idとdiscord_idの紐付けを確認する
+    result = file_io.is_linked(interaction.user.id, JSON_FILE_NAME)
+    if result:
+        await interaction.response.send_message("Your Minecraft ID is linked!")
+    else:
+        await interaction.response.send_message("Your Minecraft ID is not linked!")
+
+
+# MinecraftのidとDiscordのidを紐付けを解除する
+@tree.command(
+    name="unlink",
+    description="Unlinks your Minecraft account from your Discord account",
+)
+async def unlink_account(interaction: discord.Interaction):
+    # user_data.json からminecraft_idとdiscord_idの紐付けを確認する
+    result = file_io.is_linked(interaction.user.id, JSON_FILE_NAME)
+    if result:
+        # file_io.pyの関数を使ってminecraft_idとdiscord_idの紐付けを解除する
+        file_io.link(interaction.user.id, None, JSON_FILE_NAME)
+        await interaction.response.send_message("Unlinking completed!")
+    else:
+        await interaction.response.send_message("Your Minecraft ID is not linked!")
+
+
+# サーバーポイントを確認する
+@tree.command(name="point", description="Checks your server points")
+async def check_point(interaction: discord.Interaction):
+    # ポイントを取得する
+    point = file_io.get_points(interaction.user.id, JSON_FILE_NAME)
+    await interaction.response.send_message(f"Your points: ```fix\n{point}\n```")
+
+
+# サーバーポイントで購入できるアイテムの一覧を表示する
+@tree.command(name="mcshop", description="Shows the shop")
+async def show_shop(interaction: discord.Interaction):
+    # JSONからアイテムの情報を読み込む
+    with open("shop_list.json", "r") as f:
+        items_data = json.load(f)
+    items_list = items_data.get("items", [])  # "items"キーのリストを取得
+    # ユーザーにアイテムの一覧を表示する
+    shop_embed = discord.Embed(
+        title="Server Shop", description="Available Items for Purchase"
+    )
+    for item in items_list:
+        shop_embed.add_field(
+            name=f"ID: {item['id']}\n{item['name']} - Price: {item['price']} points",
+            value=f"Description: {item['description']}",
+            inline=False,
+        )
+    await interaction.response.send_message(embed=shop_embed)
+
+
+# サーバーポイントでマイクラのアイテムを購入する
+@tree.command(name="buy", description="Buy an item with your server points")
+async def buy_item(interaction: discord.Interaction, item_id: int, amount: int = 1):
+    # マイナスの個数を購入しようとしていないかどうかを確認する
+    if amount < 0:
+        await interaction.response.send_message("You cannot buy minus items!")
+        return
+    # JSONからアイテムの情報を読み込む
+    with open("shop_list.json", "r") as f:
+        items_data = json.load(f)
+    items_list = items_data["items"]  # "items"キーのリストを取得
+    # マイクラサーバーが起動しているかどうかを確認する
+    if not is_server_running():
+        await interaction.response.send_message("Minecraft server is not running!")
+        return
+    # マイクラサーバーに接続して、プレイヤーの一覧を取得する
+    with mcrcon.MCRcon(server_address, server_password, rcon_port) as mcr:
+        resp = mcr.command("list")
+    players = re.search(r"online: (.*)", resp).group(1).split(", ")
+    # コマンド実行者のminecraft_idが紐づいているかどうかを確認する
+    minecraft_id = file_io.get_minecraft_id(interaction.user.id, JSON_FILE_NAME)
+    if minecraft_id is None:
+        await interaction.response.send_message("Your Minecraft ID is not linked!")
+        return
+    # マイクラにログインしているかどうかを確認する
+    if minecraft_id not in players:
+        await interaction.response.send_message("You are not logged in to Minecraft!")
+        return
+    # アイテムのIDが存在するかどうかを確認する
+    for item in items_list:
+        if item["id"] == item_id:
+            # discord_idに紐付いたポイントを取得する
+            point = file_io.get_points(interaction.user.id, JSON_FILE_NAME)
+            # ポイントが足りているかどうかを確認する
+            if point >= item["price"] * amount:
+                # 購入者にアイテムを付与するコマンドをminecraftに送信する
+                print(
+                    f"Sending command: give {minecraft_id} {item['item_command']} {amount}"
+                )
+                with mcrcon.MCRcon(server_address, server_password, rcon_port) as mcr:
+                    mcr.command(f"give {minecraft_id} {item['item_command']} {amount}")
+                # 成功しているかどうかを確認する
+                with mcrcon.MCRcon(server_address, server_password, rcon_port) as mcr:
+                    resp = mcr.command(f"clear {minecraft_id} {item['item_command']} 0")
+                if re.search(r"Cleared 0 items", resp):
+                    await interaction.response.send_message("Purchase failed!")
+                    return
+                # ポイントを減らす
+                file_io.add_points(
+                    interaction.user.id, -item["price"] * amount, JSON_FILE_NAME
+                )
+                # プレイヤーにアイテムが購入されたことをメッセージで通知する
+                await interaction.response.send_message("Purchase completed!")
+                # プレイヤーにアイテムが購入されたことをdiscordに通知する
+                channel = client.get_channel(channel_id)
+                await channel.send(
+                    f"```fix\n{interaction.user.name} purchased {item['name']}!\n```"
+                )
+                return
+            else:
+                await interaction.response.send_message(
+                    "You do not have enough points!"
+                )
+                return
+    await interaction.response.send_message("Invalid item ID!")
+
+
+# ポイントを渡す
+@tree.command(name="givepoint", description="Give points to a player")
+async def give_point(interaction: discord.Interaction, amount: int, user: discord.User):
+    # 自分にポイントを渡そうとしていないかどうかを確認する
+    if interaction.user.id == user.id:
+        await interaction.response.send_message("You cannot give points to yourself!")
+        return
+    # minusのポイントを渡そうとしていないかどうかを確認する
+    if amount < 0:
+        await interaction.response.send_message("You cannot give minus points!")
+        return
+    # registerされているかどうかを確認する
+    result = file_io.is_registered(interaction.user.id, JSON_FILE_NAME)
+    if not result:
+        await interaction.response.send_message("You are not registered!")
+        return
+    # ポイントが足りているかどうかを確認する
+    point = file_io.get_points(interaction.user.id, JSON_FILE_NAME)
+    if point < amount:
+        await interaction.response.send_message("You do not have enough points!")
+        return
+    # ポイントを渡す相手がregisterされているかどうかを確認する
+    result = file_io.is_registered(user.id, JSON_FILE_NAME)
+    if not result:
+        await interaction.response.send_message("The user is not registered!")
+        return
+    # ポイントを渡す
+    await interaction.response.send_message("Give Command Received!")
+    file_io.add_points(interaction.user.id, -amount, JSON_FILE_NAME)
+    file_io.add_points(user.id, amount, JSON_FILE_NAME)
+    await interaction.channel.send(
+        f"```fix\n{interaction.user.name} gave {amount} points to {user.name}!\n```"
+    )
+
+
+# 管理者のみが実行できるポイントを渡すコマンド
+@tree.command(name="givepoint_admin", description="Give points to a player")
+@app_commands.default_permissions(administrator=True)
+async def give_point_admin(
+    interaction: discord.Interaction, amount: int, user: discord.User
+):
+    # ポイントを渡す相手がregisterされているかどうかを確認する
+    result = file_io.is_registered(user.id, JSON_FILE_NAME)
+    if not result:
+        await interaction.response.send_message("The user is not registered!")
+        return
+    # ポイントを渡す
+    await interaction.response.send_message("Give Command Received!")
+    file_io.add_points(user.id, amount, JSON_FILE_NAME)
+    await interaction.channel.send(
+        f"```fix\n{interaction.user.name} gave {amount} points to {user.name}!\n```"
+    )
+
+
+# 管理者のみが実行できる@everyoneにポイントを渡すコマンド
+@tree.command(name="givepoint_all", description="Give points to everyone")
+@app_commands.default_permissions(administrator=True)
+async def give_point_all(interaction: discord.Interaction, amount: int):
+    await interaction.response.send_message("Give Command Received!")
+    # ポイントを渡す
+    file_io.add_points_all(amount, JSON_FILE_NAME)
+    await interaction.channel.send(
+        f"```fix\n{interaction.user.name} gave {amount} points to everyone!\n```"
+    )
+
+
+# サイコロでポイントを賭ける
+@tree.command(
+    name="dicebet",
+    description="Bet points on a dice roll. If win, get [bet_amount*5] points",
+)
+async def dice_bet(interaction: discord.Interaction, amount: int, num: int):
+    # minusのポイントを賭けようとしていないかどうかを確認する
+    if amount < 0:
+        await interaction.response.send_message("You cannot bet minus points!")
+        return
+    # registerされているかどうかを確認する
+    result = file_io.is_registered(interaction.user.id, JSON_FILE_NAME)
+    if not result:
+        await interaction.response.send_message("You are not registered!")
+        return
+    # ポイントが足りているかどうかを確認する
+    point = file_io.get_points(interaction.user.id, JSON_FILE_NAME)
+    if point < amount:
+        await interaction.response.send_message("You do not have enough points!")
+        return
+    # 選択したサイコロの目が1~6の間にあるかどうかを確認する
+    if num < 1 or num > 6:
+        await interaction.response.send_message("Invalid number!")
+        return
+    # サイコロを振る
+    dice_list = []
+    for i in range(1):
+        dice_list.append(random.randint(1, 6))
+    # 選択したサイコロの目まで表示する
+    resp = f"{interaction.user.mention} rolled!\n```fix\nYou chose {num}!\nBetting {amount} points!\n```"
+    # discordのサイコロの絵文字を表示する
+    dice_resp = ""
+    for i in dice_list:
+        dice_resp += f"{dice_emoji[i-1]}"
+    resp += dice_resp
+    # サイコロの目が一致した場合
+    if dice_list[0] == num:
+        # ポイントを増やす
+        file_io.add_points(interaction.user.id, amount * 5, JSON_FILE_NAME)
+        resp += f"\n```fix\n{interaction.user.name} won {amount*5} points!\n```"
+    # サイコロの目が一致しなかった場合
+    else:
+        # ポイントを減らす
+        file_io.add_points(interaction.user.id, -amount, JSON_FILE_NAME)
+        resp += f"\n```fix\n{interaction.user.name} lost {amount} points!\n```"
+        # 減らしたポイント分を全員に分配する
+        player_num = file_io.get_player_num(JSON_FILE_NAME)
+        if player_num > 1:
+            player_num -= 1
+            file_io.add_points_all(int(amount / player_num), JSON_FILE_NAME)
+            # 賭けをしたプレイヤーに追加された分を減らす
+            file_io.add_points(
+                interaction.user.id, -int(amount / player_num), JSON_FILE_NAME
+            )
+            # 全員に何ポイントずつ追加されたかを表示する
+            resp += f"```fix\n{int(amount / player_num)} points were added to everyone!\n```"
+    await interaction.response.send_message(resp)
+
+
+# 複数のdiceの合計を賭ける
+@tree.command(
+    name="dicebet2",
+    description="Bet points on a dice roll. If win, get [bet_amount*dice_count*5] points",
+)
+async def dice_bet2(
+    interaction: discord.Interaction, amount: int, dice_count: int, num: int
+):
+    # minusのポイントを賭けようとしていないかどうかを確認する
+    if amount < 0:
+        await interaction.response.send_message("You cannot bet minus points!")
+        return
+    # registerされているかどうかを確認する
+    result = file_io.is_registered(interaction.user.id, JSON_FILE_NAME)
+    if not result:
+        await interaction.response.send_message("You are not registered!")
+        return
+    # ポイントが足りているかどうかを確認する
+    point = file_io.get_points(interaction.user.id, JSON_FILE_NAME)
+    if point < amount:
+        await interaction.response.send_message("You do not have enough points!")
+        return
+    # 選択したサイコロの数が60以下かどうかを確認する
+    if dice_count > 60:
+        await interaction.response.send_message("Too many dice!")
+        return
+    if dice_count < 1:
+        await interaction.response.send_message("Too few dice!")
+        return
+    # 選択した合計値が1~dice_count*6の間にあるかどうかを確認する
+    if num < dice_count or num > dice_count * 6:
+        await interaction.response.send_message("Invalid number!")
+        return
+    # サイコロを振る
+    dice_list = []
+    for i in range(dice_count):
+        dice_list.append(random.randint(1, 6))
+    resp = f"{interaction.user.mention} rolled!\n```fix\nYou chose {num}!\nBetting {amount} points!\n```"
+    # discordのサイコロの絵文字を表示する
+    dice_resp = ""
+    for i in dice_list:
+        dice_resp += f"{dice_emoji[i-1]}"
+    resp += dice_resp
+    # サイコロの合計を表示する
+    resp += f"\n```fix\nSum: {sum(dice_list)}\n"
+    # サイコロの目が一致した場合
+    if sum(dice_list) == num:
+        # ポイントを増やす（サイコロの数だけ増やす）
+        file_io.add_points(
+            interaction.user.id, int(amount * dice_count * 5), JSON_FILE_NAME
+        )
+        resp += f"{interaction.user.name} won {amount*dice_count*5} points!\n```"
+    # サイコロの目が一致しなかった場合
+    else:
+        # ポイントを減らす
+        file_io.add_points(interaction.user.id, -amount, JSON_FILE_NAME)
+        resp += f"{interaction.user.name} lost {amount} points!\n```"
+        # 減らしたポイント分を全員に分配する
+        player_num = file_io.get_player_num(JSON_FILE_NAME)
+        if player_num > 1:
+            player_num -= 1
+            file_io.add_points_all(int(amount / player_num), JSON_FILE_NAME)
+            # 賭けをしたプレイヤーに追加された分を減らす
+            file_io.add_points(
+                interaction.user.id, -int(amount / player_num), JSON_FILE_NAME
+            )
+            # 全員に何ポイントずつ追加されたかを表示する
+            resp += f"```fix\n{int(amount / player_num)} points were added to everyone!\n```"
+    await interaction.response.send_message(resp)
+
+
+# 2個のサイコロの合計が丁か半かを賭ける
+@tree.command(
+    name="dicebet3",
+    description='Bet points on a dice roll. If win, get [bet_amount] points. You can choose "even" or "odd".',
+)
+async def dice_bet3(interaction: discord.Interaction, amount: int, choice: str):
+    # minusのポイントを賭けようとしていないかどうかを確認する
+    if amount < 0:
+        await interaction.response.send_message("You cannot bet minus points!")
+        return
+    # registerされているかどうかを確認する
+    result = file_io.is_registered(interaction.user.id, JSON_FILE_NAME)
+    if not result:
+        await interaction.response.send_message("You are not registered!")
+        return
+    # ポイントが足りているかどうかを確認する
+    point = file_io.get_points(interaction.user.id, JSON_FILE_NAME)
+    if point < amount:
+        await interaction.response.send_message("You do not have enough points!")
+        return
+    # 選択した合計値が"even"か"odd"かを確認する
+    if choice != "even" and choice != "odd":
+        await interaction.response.send_message("Invalid choice!")
+        return
+    # サイコロを振る
+    dice_list = []
+    for i in range(2):
+        dice_list.append(random.randint(1, 6))
+    resp = f"{interaction.user.mention} rolled!\n```fix\nYou chose {choice}!\nBetting {amount} points!\n```"
+    # discordのサイコロの絵文字を表示する
+    dice_resp = ""
+    for i in dice_list:
+        dice_resp += f"{dice_emoji[i-1]}"
+    resp += dice_resp
+    # サイコロの合計が丁か半かを表示する
+    if sum(dice_list) % 2 == 0:
+        resp += f"\n```fix\nSum: even\n"
+    else:
+        resp += f"\n```fix\nSum: odd\n"
+    # サイコロの合計が丁か半かを確認する
+    if sum(dice_list) % 2 == 0 and choice == "even":
+        # ポイントを増やす
+        file_io.add_points(interaction.user.id, amount, JSON_FILE_NAME)
+        resp += f"{interaction.user.name} won {amount} points!\n```"
+    elif sum(dice_list) % 2 == 1 and choice == "odd":
+        # ポイントを増やす
+        file_io.add_points(interaction.user.id, amount, JSON_FILE_NAME)
+        resp += f"{interaction.user.name} won {amount} points!\n```"
+    else:
+        # ポイントを減らす
+        file_io.add_points(interaction.user.id, -amount, JSON_FILE_NAME)
+        resp += f"{interaction.user.name} lost {amount} points!\n```"
+        # 減らしたポイント分を全員に分配する
+        player_num = file_io.get_player_num(JSON_FILE_NAME)
+        if player_num > 1:
+            player_num -= 1
+            file_io.add_points_all(int(amount / player_num), JSON_FILE_NAME)
+            # 賭けをしたプレイヤーに追加された分を減らす
+            file_io.add_points(
+                interaction.user.id, -int(amount / player_num), JSON_FILE_NAME
+            )
+            # 全員に何ポイントずつ追加されたかを表示する
+            resp += f"```fix\n{int(amount / player_num)} points were added to everyone!\n```"
+    await interaction.response.send_message(resp)
+
+
 # Minecraft Server に接続しているプレイヤーを監視して、0人になったら5分後にサーバーを停止する
 # 定期的に自動実行され、プレイヤーがいる場合はタイマーをリセットする。
 async def check_player():
+    global is_starting
     while True:
         print("Checking for players...")
         if is_server_running():
+            # アクティビティを変更して、サーバーが起動していることを表示する
+            await client.change_presence(activity=discord.Game(name=SERVER_NAME))
             # プレイヤーが存在しているかどうかを確認する
-            with mcrcon.MCRcon(server_address, server_password, server_port) as mcr:
+            with mcrcon.MCRcon(server_address, server_password, rcon_port) as mcr:
                 resp = mcr.command("list")
             # プレイヤーが存在しない場合は、5分後にサーバーを停止する
             if re.search(r"0 of a max of 20 players online", resp):
                 # サーバーにプレイヤーがいないことをdiscordに通知する
                 channel = client.get_channel(channel_id)
-                await channel.send(
-                    "```txt\nNo players are playing on the server.\nIf no players join within 5 minutes, the server will be stopped.```"
-                )
+                if channel is not None:
+                    await channel.send("```fix\nNo players are playing!\n```")
                 await asyncio.sleep(300)
-                with mcrcon.MCRcon(server_address, server_password, server_port) as mcr:
+                with mcrcon.MCRcon(server_address, server_password, rcon_port) as mcr:
                     resp = mcr.command("list")
                 # 5分後にもプレイヤーがいない場合は、サーバーを停止する
                 if (
@@ -287,7 +795,7 @@ async def check_player():
                 ):
                     # サーバーを停止するコマンドを実行する
                     with mcrcon.MCRcon(
-                        server_address, server_password, server_port
+                        server_address, server_password, rcon_port
                     ) as mcr:
                         resp = mcr.command("stop")
                     # Wait for server to stop
@@ -296,7 +804,7 @@ async def check_player():
                         if time.time() - start_time > 60:
                             # one more try
                             with mcrcon.MCRcon(
-                                server_address, server_password, server_port
+                                server_address, server_password, rcon_port
                             ) as mcr:
                                 resp = mcr.command("stop")
                             start_time = time.time()
@@ -304,19 +812,42 @@ async def check_player():
                     # Change presence to show server is not running
                     await client.change_presence(activity=discord.Game(name=""))
                     # サーバーが停止したことをdiscordに通知する
-                    await channel.send("```fix\nMinecraft server stopped!\n```")
+                    if channel is not None:
+                        await channel.send("```fix\nServer stopped!\n```")
             else:
-                # プレイヤーがいる場合は、5分後に再度確認する
+                # プレイヤーがいる場合は、point_upを実行する
+                player_list = re.search(r"online: (.*)", resp).group(1).split(", ")
+                await point_up(player_list)
+                # 5分後に再度確認する
                 await asyncio.sleep(300)
+                continue
+        elif is_starting:
+            # サーバーが起動中の場合は、アクティビティを変更して、サーバーが起動中であることを表示する
+            await client.change_presence(activity=discord.Game(name="Starting..."))
+        else:
+            # アクティビティを変更して、サーバーが停止していることを表示する
+            await client.change_presence(activity=discord.Game(name=""))
         # 1分ごとに確認する
         await asyncio.sleep(60)
+
+
+# Minecraft Serverに接続していれば紐づいたDiscordのidにサーバーポイントを付与する
+async def point_up(minecraft_id_list):
+    # discordサーバー参加者からminecraft_id_listに含まれるプレイヤーを探す
+    for minecraft_id in minecraft_id_list:
+        discord_id = file_io.get_discord_id(minecraft_id, JSON_FILE_NAME)
+        # プレイヤーが見つかった場合
+        if discord_id is not None:
+            print(f"Found {minecraft_id}!")
+            # discordサーバー参加者のdiscordのidにポイントを付与する
+            file_io.add_points(discord_id, 10, JSON_FILE_NAME)
 
 
 def is_server_running():
     # Code to check if the Minecraft server is running
     # マイクラサーバーがオンラインかどうかmcrconで確認する
     try:
-        with mcrcon.MCRcon(server_address, server_password, server_port) as mcr:
+        with mcrcon.MCRcon(server_address, server_password, rcon_port) as mcr:
             resp = mcr.command("list")
         return True
     except:
