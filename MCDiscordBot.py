@@ -490,12 +490,8 @@ async def buy_item(interaction: discord.Interaction, item_id: int, amount: int =
                     interaction.user.id, -item["price"] * amount, JSON_FILE_NAME
                 )
                 # プレイヤーにアイテムが購入されたことをメッセージで通知する
-                await interaction.response.send_message("Purchase completed!")
-                # プレイヤーにアイテムが購入されたことをdiscordに通知する
-                channel = client.get_channel(channel_id)
-                await channel.send(
-                    f"```fix\n{interaction.user.name} purchased {item['name']}!\n```"
-                )
+                resp_msg = f"{interaction.user.mention} purchase completed!\n```fix\nYou purchased {item['name']} x {amount}!\n```"
+                await interaction.response.send_message(resp_msg)
                 return
             else:
                 await interaction.response.send_message(
@@ -743,12 +739,12 @@ async def dice_bet3(interaction: discord.Interaction, amount: int, choice: str):
     # サイコロの合計が丁か半かを確認する
     if sum(dice_list) % 2 == 0 and choice == "even":
         # ポイントを増やす
-        file_io.add_points(interaction.user.id, amount, JSON_FILE_NAME)
-        resp += f"{interaction.user.name} won {amount} points!\n```"
+        file_io.add_points(interaction.user.id, int(amount * 0.6), JSON_FILE_NAME)
+        resp += f"{interaction.user.name} won {int(amount*0.6)} points!\n```"
     elif sum(dice_list) % 2 == 1 and choice == "odd":
         # ポイントを増やす
-        file_io.add_points(interaction.user.id, amount, JSON_FILE_NAME)
-        resp += f"{interaction.user.name} won {amount} points!\n```"
+        file_io.add_points(interaction.user.id, int(amount * 0.6), JSON_FILE_NAME)
+        resp += f"{interaction.user.name} won {int(amount*0.6)} points!\n```"
     else:
         # ポイントを減らす
         file_io.add_points(interaction.user.id, -amount, JSON_FILE_NAME)
@@ -757,13 +753,13 @@ async def dice_bet3(interaction: discord.Interaction, amount: int, choice: str):
         player_num = file_io.get_player_num(JSON_FILE_NAME)
         if player_num > 1:
             player_num -= 1
-            file_io.add_points_all(int(amount / player_num), JSON_FILE_NAME)
+            file_io.add_points_all(int(amount * 0.5 / player_num), JSON_FILE_NAME)
             # 賭けをしたプレイヤーに追加された分を減らす
             file_io.add_points(
-                interaction.user.id, -int(amount / player_num), JSON_FILE_NAME
+                interaction.user.id, -int(amount * 0.5 / player_num), JSON_FILE_NAME
             )
             # 全員に何ポイントずつ追加されたかを表示する
-            resp += f"```fix\n{int(amount / player_num)} points were added to everyone!\n```"
+            resp += f"```fix\n{int(amount * 0.5 / player_num)} points were added to everyone!\n```"
     await interaction.response.send_message(resp)
 
 
