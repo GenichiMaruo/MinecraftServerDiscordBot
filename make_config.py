@@ -3,11 +3,13 @@ import json
 # Create a dictionary with the token and channel ID
 data = {
     "discord_token": "YOUR_TOKEN_HERE",
-    "discord_channel_id": "YOUR_CHANNEL_ID_HERE",
+    "command_channel_id": "YOUR_CHANNEL_ID_HERE",
+    "info_channel_id": "YOUR_CHANNEL_ID_HERE",
     "minecraft_server_ip": "localhost",
     "minecraft_server_port": 25565,
     "minecraft_server_rcon_port": 25575,
     "minecraft_server_rcon_password": "minecraft",
+    "info_message_id": None,
 }
 
 # Write the dictionary to a JSON file

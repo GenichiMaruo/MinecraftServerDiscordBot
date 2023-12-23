@@ -1,11 +1,3 @@
-TOKEN = None
-SERVER_DIRECTORY = "./MINECRAFT/server"
-SERVER_NAME = "Minecraft Server"
-SERVER_SHELL = "run.bat"
-SERVER_LOG = "logs/latest.log"
-SERVER_PORT = 25565
-JSON_FILE_NAME = "user_data.json"
-
 import os
 import re
 import signal
@@ -13,11 +5,27 @@ import time
 import subprocess
 import random
 import json
-import file_io
 import asyncio
 import mcrcon
 import discord
 from discord import app_commands
+from discord.ext import tasks
+
+import file_io
+
+TOKEN = None
+SERVER_DIRECTORY = "./MINECRAFT/server"
+SERVER_NAME = "Minecraft Server"
+SERVER_SHELL = "run.bat"
+SERVER_LOG = "logs/latest.log"
+SERVER_PORT = 25565
+JSON_FILE_NAME = "user_data.json"
+COMMAND_CHANNEL_ID = None
+INFO_CHANNEL_ID = None
+SERVER_ADDRESS = None
+RCON_PORT = None
+SERVER_PASSWORD = None
+INFO_MESSAGE_ID = None
 
 intents = discord.Intents.default()
 client = discord.Client(intents=intents)
@@ -25,24 +33,43 @@ tree = app_commands.CommandTree(client=client)
 last_execution_time = 0
 # 起動処理実行中かどうかを確認する
 is_starting = False
+# 賭けのレート
+rate_dicebet = None
+rate_dicebet2 = None
+rate_dicebet3 = None
 
 # config.jsonからdiscordのtokenとchannel_idを読み込む
-with open("config.json", "r") as f:
-    data = json.load(f)
-    TOKEN = data["discord_token"]
-    channel_id = data["discord_channel_id"]
-    server_address = data["minecraft_server_ip"]
-    rcon_port = data["minecraft_server_rcon_port"]
-    server_password = data["minecraft_server_rcon_password"]
-os.chdir(SERVER_DIRECTORY)
+try:
+    with open("config.json", "r") as f:
+        data = json.load(f)
+        TOKEN = data["discord_token"]
+        COMMAND_CHANNEL_ID = data["command_channel_id"]
+        INFO_CHANNEL_ID = data["info_channel_id"]
+        SERVER_ADDRESS = data["minecraft_server_ip"]
+        RCON_PORT = data["minecraft_server_rcon_port"]
+        SERVER_PASSWORD = data["minecraft_server_rcon_password"]
+        INFO_MESSAGE_ID = data["info_message_id"]
+    # IDがint型でない場合は、int型に変換する。Noneの場合は、Noneのままにする
+    if COMMAND_CHANNEL_ID is not None:
+        COMMAND_CHANNEL_ID = int(COMMAND_CHANNEL_ID)
+    if INFO_CHANNEL_ID is not None:
+        INFO_CHANNEL_ID = int(INFO_CHANNEL_ID)
+    if INFO_MESSAGE_ID is not None:
+        INFO_MESSAGE_ID = int(INFO_MESSAGE_ID)
+    if RCON_PORT is not None:
+        RCON_PORT = int(RCON_PORT)
+except FileNotFoundError:
+    print("config.json not found!")
+    exit()
 
 print("Starting Discord bot...")
 # configの内容を確認
 print(f"Discord token: {TOKEN}")
-print(f"Discord channel id: {channel_id}")
-print(f"Minecraft server ip: {server_address}")
-print(f"Minecraft server rcon port: {rcon_port}")
-print(f"Minecraft server rcon password: {server_password}")
+print(f"Discord command channel id: {COMMAND_CHANNEL_ID}")
+print(f"Discord info channel id: {INFO_CHANNEL_ID}")
+print(f"Minecraft server ip: {SERVER_ADDRESS}")
+print(f"Minecraft server rcon port: {RCON_PORT}")
+print(f"Minecraft server rcon password: {SERVER_PASSWORD}")
 
 dice_emoji = [
     "<:dice_1:1186303558426038385>",
@@ -137,7 +164,7 @@ async def start_server(interaction: discord.Interaction):
         await interaction.response.send_message("Starting is in progress!")
         return
     # if minecraft server is already running
-    if is_server_running():
+    if await is_server_running():
         await interaction.response.send_message("Minecraft server is already running!")
         return
     # Code to start the Minecraft server
@@ -169,7 +196,7 @@ async def start_process():
     )
     # Wait for server to start
     start_time = time.time()
-    while not is_server_running():
+    while not await is_server_running():
         if time.time() - start_time > 300:
             # kill the server process
             os.killpg(os.getpgid(process.pid), signal.SIGTERM)
@@ -191,18 +218,18 @@ async def backup_server(interaction: discord.Interaction):
 @app_commands.default_permissions(administrator=True)
 async def stop_server(interaction: discord.Interaction):
     # if minecraft server is already running
-    if is_server_running():
+    if await is_server_running():
         await interaction.response.send_message("Stop Command Received!")
         channel = interaction.channel
         sent_message = await channel.send("```fix\nStopping Minecraft server...\n```")
         # Code to stop the Minecraft server
         # use rcon to stop the server
-        with mcrcon.MCRcon(server_address, server_password, rcon_port) as mcr:
+        with mcrcon.MCRcon(SERVER_ADDRESS, SERVER_PASSWORD, RCON_PORT) as mcr:
             resp = mcr.command("stop")
             print(resp)
         # Wait for server to stop
         start_time = time.time()
-        while is_server_running():
+        while await is_server_running():
             if time.time() - start_time > 60:
                 await sent_message.edit(
                     content="```arm\nMinecraft server failed to stop!\n```"
@@ -218,7 +245,7 @@ async def stop_server(interaction: discord.Interaction):
 
 @tree.command(name="status", description="Checks the status of the Minecraft server")
 async def status_server(interaction: discord.Interaction):
-    if is_server_running():
+    if await is_server_running():
         await interaction.response.send_message("Minecraft server is running!")
     else:
         await interaction.response.send_message("Minecraft server is not running!")
@@ -227,9 +254,9 @@ async def status_server(interaction: discord.Interaction):
 # Minecraft Server に接続しているプレイヤーの一覧を表示する
 @tree.command(name="list", description="Lists the players on the Minecraft server")
 async def list_server(interaction: discord.Interaction):
-    if is_server_running():
+    if await is_server_running():
         # 参加人数を確認する
-        with mcrcon.MCRcon(server_address, server_password, rcon_port) as mcr:
+        with mcrcon.MCRcon(SERVER_ADDRESS, SERVER_PASSWORD, RCON_PORT) as mcr:
             resp = mcr.command("list")
         # プレイヤーがいない場合
         if re.search(r"0 of a max of 20 players online", resp):
@@ -261,9 +288,9 @@ async def exit_bot(interaction: discord.Interaction):
 @tree.command(name="say", description="Says a message on the Minecraft server")
 @app_commands.default_permissions(administrator=True)
 async def say_server(interaction: discord.Interaction, message: str):
-    if is_server_running():
+    if await is_server_running():
         # メッセージをサーバーに送信する
-        with mcrcon.MCRcon(server_address, server_password, rcon_port) as mcr:
+        with mcrcon.MCRcon(SERVER_ADDRESS, SERVER_PASSWORD, RCON_PORT) as mcr:
             mcr.command(f"say {message}")
         await interaction.response.send_message("Message sent!")
     else:
@@ -274,12 +301,12 @@ async def say_server(interaction: discord.Interaction, message: str):
 @tree.command(name="command", description="Sends a command to the Minecraft server")
 @app_commands.default_permissions(administrator=True)
 async def say_server(interaction: discord.Interaction, message: str):
-    if is_server_running():
+    if await is_server_running():
         # メッセージの先頭に/がない場合は、/を追加する
         if message[0] != "/":
             message = "/" + message
         # メッセージをサーバーに送信する
-        with mcrcon.MCRcon(server_address, server_password, rcon_port) as mcr:
+        with mcrcon.MCRcon(SERVER_ADDRESS, SERVER_PASSWORD, RCON_PORT) as mcr:
             mcr.command(f"{message}")
         await interaction.response.send_message("Message sent!")
     else:
@@ -305,32 +332,26 @@ async def register(interaction: discord.Interaction):
 )
 async def link_account(interaction: discord.Interaction, minecraft_id: str):
     # Minecraftサーバーが起動しているかどうかを確認する
-    if not is_server_running():
+    if not await is_server_running():
         await interaction.response.send_message("Minecraft server is not running!")
         return
     # Minecraftサーバーに接続して、プレイヤーの一覧を取得する
-    with mcrcon.MCRcon(server_address, server_password, rcon_port) as mcr:
-        resp = mcr.command("list")
+    player_list = await get_player_list()
     # プレイヤーがいない場合
-    if re.search(r"0 of a max of 20 players online", resp):
-        await interaction.response.send_message(
-            "Linking failed! No players are playing!"
-        )
+    if len(player_list) == 0:
+        await interaction.response.send_message("No players are playing!")
+        return
     # プレイヤーがいる場合
     else:
         await interaction.response.send_message(
             "Link Command Received! Please wait a moment..."
         )
-        # プレイヤーの一覧を取得する。online: のあとの文字列がプレイヤーの一覧
-        player_list = re.search(r"online: (.*)", resp).group(1)
-        # プレイヤーの一覧を改行で区切って、リストに格納する
-        player_list = player_list.split(", ")
         # プレイヤーの一覧にminecraft_idがあるかどうかを確認する
         if minecraft_id in player_list:
             # プレイヤーの一覧にminecraft_idがある場合
             # サーバーにランダムな4桁の数字の個人メッセージを送信
             random_number = random.randint(1000, 9999)
-            with mcrcon.MCRcon(server_address, server_password, rcon_port) as mcr:
+            with mcrcon.MCRcon(SERVER_ADDRESS, SERVER_PASSWORD, RCON_PORT) as mcr:
                 mcr.command(
                     f'tellraw {minecraft_id} ["",{{"text":"Please send this number to the bot.","color":"yellow"}},{{"text":"\\n{random_number}","color":"aqua","bold":true}}]'
                 )
@@ -450,11 +471,11 @@ async def buy_item(interaction: discord.Interaction, item_id: int, amount: int =
         items_data = json.load(f)
     items_list = items_data["items"]  # "items"キーのリストを取得
     # マイクラサーバーが起動しているかどうかを確認する
-    if not is_server_running():
+    if not await is_server_running():
         await interaction.response.send_message("Minecraft server is not running!")
         return
     # マイクラサーバーに接続して、プレイヤーの一覧を取得する
-    with mcrcon.MCRcon(server_address, server_password, rcon_port) as mcr:
+    with mcrcon.MCRcon(SERVER_ADDRESS, SERVER_PASSWORD, RCON_PORT) as mcr:
         resp = mcr.command("list")
     players = re.search(r"online: (.*)", resp).group(1).split(", ")
     # コマンド実行者のminecraft_idが紐づいているかどうかを確認する
@@ -477,10 +498,10 @@ async def buy_item(interaction: discord.Interaction, item_id: int, amount: int =
                 print(
                     f"Sending command: give {minecraft_id} {item['item_command']} {amount}"
                 )
-                with mcrcon.MCRcon(server_address, server_password, rcon_port) as mcr:
+                with mcrcon.MCRcon(SERVER_ADDRESS, SERVER_PASSWORD, RCON_PORT) as mcr:
                     mcr.command(f"give {minecraft_id} {item['item_command']} {amount}")
                 # 成功しているかどうかを確認する
-                with mcrcon.MCRcon(server_address, server_password, rcon_port) as mcr:
+                with mcrcon.MCRcon(SERVER_ADDRESS, SERVER_PASSWORD, RCON_PORT) as mcr:
                     resp = mcr.command(f"clear {minecraft_id} {item['item_command']} 0")
                 if re.search(r"Cleared 0 items", resp):
                     await interaction.response.send_message("Purchase failed!")
@@ -573,6 +594,7 @@ async def give_point_all(interaction: discord.Interaction, amount: int):
     description="Bet points on a dice roll. If win, get [bet_amount*5] points",
 )
 async def dice_bet(interaction: discord.Interaction, amount: int, num: int):
+    global rate_dicebet
     # minusのポイントを賭けようとしていないかどうかを確認する
     if amount < 0:
         await interaction.response.send_message("You cannot bet minus points!")
@@ -591,27 +613,40 @@ async def dice_bet(interaction: discord.Interaction, amount: int, num: int):
     if num < 1 or num > 6:
         await interaction.response.send_message("Invalid number!")
         return
+    # embedを使って、賭けの結果を表示する
+    dice_bet_embed = discord.Embed(
+        title="Dice Bet",
+        description=f"{interaction.user.mention} rolled!\n```fix\nYou chose {num}!\nBetting {amount} points!\n```",
+    )
     # サイコロを振る
     dice_list = []
     for i in range(1):
         dice_list.append(random.randint(1, 6))
-    # 選択したサイコロの目まで表示する
-    resp = f"{interaction.user.mention} rolled!\n```fix\nYou chose {num}!\nBetting {amount} points!\n```"
     # discordのサイコロの絵文字を表示する
     dice_resp = ""
     for i in dice_list:
         dice_resp += f"{dice_emoji[i-1]}"
-    resp += dice_resp
+    dice_bet_embed.add_field(name="Result", value=dice_resp, inline=False)
     # サイコロの目が一致した場合
     if dice_list[0] == num:
         # ポイントを増やす
-        file_io.add_points(interaction.user.id, amount * 5, JSON_FILE_NAME)
-        resp += f"\n```fix\n{interaction.user.name} won {amount*5} points!\n```"
+        file_io.add_points(
+            interaction.user.id, int(amount * 5 * rate_dicebet), JSON_FILE_NAME
+        )
+        dice_bet_embed.add_field(
+            name="",
+            value=f"```fix\n{interaction.user.name} won {int(amount*5*rate_dicebet)} points!\n```",
+            inline=False,
+        )
     # サイコロの目が一致しなかった場合
     else:
         # ポイントを減らす
         file_io.add_points(interaction.user.id, -amount, JSON_FILE_NAME)
-        resp += f"\n```fix\n{interaction.user.name} lost {amount} points!\n```"
+        dice_bet_embed.add_field(
+            name="",
+            value=f"```fix\n{interaction.user.name} lost {amount} points!\n```",
+            inline=False,
+        )
         # 減らしたポイント分を全員に分配する
         player_num = file_io.get_player_num(JSON_FILE_NAME)
         if player_num > 1:
@@ -622,8 +657,12 @@ async def dice_bet(interaction: discord.Interaction, amount: int, num: int):
                 interaction.user.id, -int(amount / player_num), JSON_FILE_NAME
             )
             # 全員に何ポイントずつ追加されたかを表示する
-            resp += f"```fix\n{int(amount / player_num)} points were added to everyone!\n```"
-    await interaction.response.send_message(resp)
+            dice_bet_embed.add_field(
+                name="Distribution",
+                value=f"```fix\n{int(amount / player_num)} points were added to everyone!\n```",
+                inline=False,
+            )
+    await interaction.response.send_message(embed=dice_bet_embed)
 
 
 # 複数のdiceの合計を賭ける
@@ -634,6 +673,7 @@ async def dice_bet(interaction: discord.Interaction, amount: int, num: int):
 async def dice_bet2(
     interaction: discord.Interaction, amount: int, dice_count: int, num: int
 ):
+    global rate_dicebet2
     # minusのポイントを賭けようとしていないかどうかを確認する
     if amount < 0:
         await interaction.response.send_message("You cannot bet minus points!")
@@ -663,26 +703,42 @@ async def dice_bet2(
     dice_list = []
     for i in range(dice_count):
         dice_list.append(random.randint(1, 6))
-    resp = f"{interaction.user.mention} rolled!\n```fix\nYou chose {num}!\nBetting {amount} points!\n```"
+    # embedを使って、賭けの結果を表示する
+    dice_bet_embed = discord.Embed(
+        title="Dice Bet 2",
+        description=f"{interaction.user.mention} rolled!\n```fix\nYou chose {num}!\nBetting {amount} points!\n```",
+    )
     # discordのサイコロの絵文字を表示する
     dice_resp = ""
     for i in dice_list:
         dice_resp += f"{dice_emoji[i-1]}"
-    resp += dice_resp
+    dice_bet_embed.add_field(name="Result", value=dice_resp, inline=False)
     # サイコロの合計を表示する
-    resp += f"\n```fix\nSum: {sum(dice_list)}\n"
+    dice_bet_embed.add_field(
+        name="", value=f"```fix\nSum: {sum(dice_list)}\n```", inline=False
+    )
     # サイコロの目が一致した場合
     if sum(dice_list) == num:
         # ポイントを増やす（サイコロの数だけ増やす）
         file_io.add_points(
-            interaction.user.id, int(amount * dice_count * 5), JSON_FILE_NAME
+            interaction.user.id,
+            int(amount * dice_count * 5 * rate_dicebet2),
+            JSON_FILE_NAME,
         )
-        resp += f"{interaction.user.name} won {amount*dice_count*5} points!\n```"
+        dice_bet_embed.add_field(
+            name="",
+            value=f"```fix\n{interaction.user.name} won {int(amount*dice_count*5*rate_dicebet2)} points!\n```",
+            inline=False,
+        )
     # サイコロの目が一致しなかった場合
     else:
         # ポイントを減らす
         file_io.add_points(interaction.user.id, -amount, JSON_FILE_NAME)
-        resp += f"{interaction.user.name} lost {amount} points!\n```"
+        dice_bet_embed.add_field(
+            name="",
+            value=f"```fix\n{interaction.user.name} lost {amount} points!\n```",
+            inline=False,
+        )
         # 減らしたポイント分を全員に分配する
         player_num = file_io.get_player_num(JSON_FILE_NAME)
         if player_num > 1:
@@ -693,16 +749,21 @@ async def dice_bet2(
                 interaction.user.id, -int(amount / player_num), JSON_FILE_NAME
             )
             # 全員に何ポイントずつ追加されたかを表示する
-            resp += f"```fix\n{int(amount / player_num)} points were added to everyone!\n```"
-    await interaction.response.send_message(resp)
+            dice_bet_embed.add_field(
+                name="Distribution",
+                value=f"```fix\n{int(amount / player_num)} points were added to everyone!\n```",
+                inline=False,
+            )
+    await interaction.response.send_message(embed=dice_bet_embed)
 
 
 # 2個のサイコロの合計が丁か半かを賭ける
 @tree.command(
     name="dicebet3",
-    description='Bet points on a dice roll. If win, get [bet_amount] points. You can choose "even" or "odd".',
+    description='"even" or "odd" on the sum of two dice',
 )
 async def dice_bet3(interaction: discord.Interaction, amount: int, choice: str):
+    global rate_dicebet3
     # minusのポイントを賭けようとしていないかどうかを確認する
     if amount < 0:
         await interaction.response.send_message("You cannot bet minus points!")
@@ -725,30 +786,50 @@ async def dice_bet3(interaction: discord.Interaction, amount: int, choice: str):
     dice_list = []
     for i in range(2):
         dice_list.append(random.randint(1, 6))
-    resp = f"{interaction.user.mention} rolled!\n```fix\nYou chose {choice}!\nBetting {amount} points!\n```"
+    # embedを使って、賭けの結果を表示する
+    dice_bet_embed = discord.Embed(
+        title="Dice Bet 3",
+        description=f"{interaction.user.mention} rolled!\n```fix\nYou chose {choice}!\nBetting {amount} points!\n```",
+    )
     # discordのサイコロの絵文字を表示する
     dice_resp = ""
     for i in dice_list:
         dice_resp += f"{dice_emoji[i-1]}"
-    resp += dice_resp
+    dice_bet_embed.add_field(name="Result", value=dice_resp, inline=False)
     # サイコロの合計が丁か半かを表示する
     if sum(dice_list) % 2 == 0:
-        resp += f"\n```fix\nSum: even\n"
+        dice_bet_embed.add_field(name="", value=f"```fix\nSum: Even\n```", inline=False)
     else:
-        resp += f"\n```fix\nSum: odd\n"
+        dice_bet_embed.add_field(name="", value=f"```fix\nSum: Odd\n```", inline=False)
     # サイコロの合計が丁か半かを確認する
     if sum(dice_list) % 2 == 0 and choice == "even":
         # ポイントを増やす
-        file_io.add_points(interaction.user.id, int(amount * 0.6), JSON_FILE_NAME)
-        resp += f"{interaction.user.name} won {int(amount*0.6)} points!\n```"
+        file_io.add_points(
+            interaction.user.id, int(amount * rate_dicebet3), JSON_FILE_NAME
+        )
+        dice_bet_embed.add_field(
+            name="",
+            value=f"```fix\n{interaction.user.name} won {int(amount*rate_dicebet3)} points!\n```",
+            inline=False,
+        )
     elif sum(dice_list) % 2 == 1 and choice == "odd":
         # ポイントを増やす
-        file_io.add_points(interaction.user.id, int(amount * 0.6), JSON_FILE_NAME)
-        resp += f"{interaction.user.name} won {int(amount*0.6)} points!\n```"
+        file_io.add_points(
+            interaction.user.id, int(amount * rate_dicebet3), JSON_FILE_NAME
+        )
+        dice_bet_embed.add_field(
+            name="",
+            value=f"```fix\n{interaction.user.name} won {int(amount*rate_dicebet3)} points!\n```",
+            inline=False,
+        )
     else:
         # ポイントを減らす
         file_io.add_points(interaction.user.id, -amount, JSON_FILE_NAME)
-        resp += f"{interaction.user.name} lost {amount} points!\n```"
+        dice_bet_embed.add_field(
+            name="",
+            value=f"```fix\n{interaction.user.name} lost {amount} points!\n```",
+            inline=False,
+        )
         # 減らしたポイント分を全員に分配する
         player_num = file_io.get_player_num(JSON_FILE_NAME)
         if player_num > 1:
@@ -759,8 +840,19 @@ async def dice_bet3(interaction: discord.Interaction, amount: int, choice: str):
                 interaction.user.id, -int(amount * 0.5 / player_num), JSON_FILE_NAME
             )
             # 全員に何ポイントずつ追加されたかを表示する
-            resp += f"```fix\n{int(amount * 0.5 / player_num)} points were added to everyone!\n```"
-    await interaction.response.send_message(resp)
+            dice_bet_embed.add_field(
+                name="Distribution",
+                value=f"```fix\n{int(amount * 0.5 / player_num)} points were added to everyone!\n```",
+                inline=False,
+            )
+    await interaction.response.send_message(embed=dice_bet_embed)
+
+
+async def create_error_embed(error_msg):
+    embed = discord.Embed(title="Error", description=error_msg)
+    # カラーを赤に設定する
+    embed.colour = discord.Colour.red()
+    return embed
 
 
 # Minecraft Server に接続しているプレイヤーを監視して、0人になったら5分後にサーバーを停止する
@@ -769,38 +861,34 @@ async def check_player():
     global is_starting
     while True:
         print("Checking for players...")
-        if is_server_running():
+        if await is_server_running():
             # アクティビティを変更して、サーバーが起動していることを表示する
             await client.change_presence(activity=discord.Game(name=SERVER_NAME))
             # プレイヤーが存在しているかどうかを確認する
-            with mcrcon.MCRcon(server_address, server_password, rcon_port) as mcr:
-                resp = mcr.command("list")
+            player_list = await get_player_list()
             # プレイヤーが存在しない場合は、5分後にサーバーを停止する
-            if re.search(r"0 of a max of 20 players online", resp):
+            if len(player_list) == 0:
                 # サーバーにプレイヤーがいないことをdiscordに通知する
-                channel = client.get_channel(channel_id)
+                channel = client.get_channel(COMMAND_CHANNEL_ID)
                 if channel is not None:
                     await channel.send("```fix\nNo players are playing!\n```")
                 await asyncio.sleep(300)
-                with mcrcon.MCRcon(server_address, server_password, rcon_port) as mcr:
-                    resp = mcr.command("list")
+                # 再度プレイヤーがいるかどうかを確認する
+                player_list = await get_player_list()
                 # 5分後にもプレイヤーがいない場合は、サーバーを停止する
-                if (
-                    re.search(r"0 of a max of 20 players online", resp)
-                    and is_server_running()
-                ):
+                if len(player_list) == 0:
                     # サーバーを停止するコマンドを実行する
                     with mcrcon.MCRcon(
-                        server_address, server_password, rcon_port
+                        SERVER_ADDRESS, SERVER_PASSWORD, RCON_PORT
                     ) as mcr:
                         resp = mcr.command("stop")
                     # Wait for server to stop
                     start_time = time.time()
-                    while is_server_running():
+                    while await is_server_running():
                         if time.time() - start_time > 60:
                             # one more try
                             with mcrcon.MCRcon(
-                                server_address, server_password, rcon_port
+                                SERVER_ADDRESS, SERVER_PASSWORD, RCON_PORT
                             ) as mcr:
                                 resp = mcr.command("stop")
                             start_time = time.time()
@@ -839,21 +927,175 @@ async def point_up(minecraft_id_list):
             file_io.add_points(discord_id, 10, JSON_FILE_NAME)
 
 
-def is_server_running():
+async def is_server_running():
     # Code to check if the Minecraft server is running
     # マイクラサーバーがオンラインかどうかmcrconで確認する
     try:
-        with mcrcon.MCRcon(server_address, server_password, rcon_port) as mcr:
+        with mcrcon.MCRcon(SERVER_ADDRESS, SERVER_PASSWORD, RCON_PORT) as mcr:
             resp = mcr.command("list")
         return True
     except:
         return False
 
 
+async def import_rate():
+    global rate_dicebet, rate_dicebet2, rate_dicebet3
+    try:
+        # JSONからレートの情報を読み込む
+        with open("rate.json", "r") as f:
+            rate_data = json.load(f)
+        rate_dicebet = rate_data.get("rate_dicebet", 1)
+        rate_dicebet2 = rate_data.get("rate_dicebet2", 1)
+        rate_dicebet3 = rate_data.get("rete_dicebet3", 1)
+    except:
+        # JSONが存在しない場合は、レートをランダムに変更する
+        await change_rate()
+
+
+# 賭けのレートをランダムに変更する
+async def change_rate():
+    global rate_dicebet, rate_dicebet2, rate_dicebet3
+    # 0.7~1.2の間の乱数を生成する
+    rate_dicebet = random.uniform(0.6, 1.2)
+    rate_dicebet2 = random.uniform(0.6, 1.2)
+    rate_dicebet3 = random.uniform(0.6, 1.2)
+    # JSONに書き込む
+    with open("rate.json", "w") as f:
+        json.dump(
+            {
+                "rate_dicebet": rate_dicebet,
+                "rate_dicebet2": rate_dicebet2,
+                "rete_dicebet3": rate_dicebet3,
+            },
+            f,
+            indent=4,
+        )
+
+
+# 1分ごとに実行する
+@tasks.loop(seconds=60)
+async def minute_loop():
+    # 賭けのレートを前回のレート変更から30分後であれば変更する
+    global rate_dicebet, rate_dicebet2, rate_dicebet3
+    if minute_loop.current_loop % 30 == 0:
+        await change_rate()
+    # プレイヤーの一覧を取得する
+    player_list = await get_player_list()
+    # embedを編集する
+    await edit_info_message(player_list, INFO_CHANNEL_ID, INFO_MESSAGE_ID)
+
+
+# info_messageを投稿する
+async def post_info_message():
+    # プレイヤーの一覧を取得する
+    player_list = await get_player_list()
+    # embedを作成する
+    info_embed = discord.Embed(title="Info", description="Dice Bet Rate and Players")
+    # 賭けのレートを小数点以下2桁まで表示する
+    info_embed.add_field(
+        name="Dice Bet Rate",
+        value=f"```fix\nDice Bet:  {rate_dicebet:.2f}\nDice Bet2: {rate_dicebet2:.2f}\nDice Bet3: {rate_dicebet3:.2f}\n```",
+        inline=False,
+    )
+    # プレイヤーの一覧を表示する
+    player_list_str = ""
+    # 現在のサーバーの稼働状況によってembedの色を変える
+    if await is_server_running():
+        info_embed.colour = discord.Colour.green()
+        if len(player_list) == 0:
+            player_list_str = "No players are playing!"
+        for player in player_list:
+            player_list_str += f"{player}\n"
+    else:
+        info_embed.colour = discord.Colour.red()
+        player_list_str = "Minecraft server is not running!"
+    info_embed.add_field(
+        name="Players",
+        value=f"```fix\n{player_list_str}\n```",
+        inline=False,
+    )
+    # 投稿する
+    print(f"Posting info message to {INFO_CHANNEL_ID}...")
+    channel = client.get_channel(INFO_CHANNEL_ID)
+    print(channel)
+    message = await channel.send(embed=info_embed)
+    # info_message_idを更新する
+    global INFO_MESSAGE_ID
+    INFO_MESSAGE_ID = message.id
+    # config.jsonのinfo_message_idを更新する
+    try:
+        with open("config.json", "r") as f:
+            config_data = json.load(f)
+        config_data["info_message_id"] = INFO_MESSAGE_ID
+        with open("config.json", "w") as f:
+            json.dump(config_data, f, indent=4)
+    except:
+        print("Failed to update info_message_id!")
+
+
+# Player_listを引数に取り、指定の投稿を編集して、賭けのレートとプレイヤーの一覧を表示する
+async def edit_info_message(player_list, channel_id, info_message_id):
+    # embedを作成する
+    info_embed = discord.Embed(title="Info", description="Dice Bet Rate and Players")
+    # 賭けのレートを表示する
+    info_embed.add_field(
+        name="Dice Bet Rate",
+        value=f"```fix\nDice Bet:  {rate_dicebet:.2f}\nDice Bet2: {rate_dicebet2:.2f}\nDice Bet3: {rate_dicebet3:.2f}\n```",
+        inline=False,
+    )
+    # プレイヤーの一覧を表示する
+    player_list_str = ""
+    # 現在のサーバーの稼働状況によってembedの色を変える
+    if await is_server_running():
+        info_embed.colour = discord.Colour.green()
+        if len(player_list) == 0:
+            player_list_str = "No players are playing!"
+        for player in player_list:
+            player_list_str += f"{player}\n"
+    elif is_starting:
+        info_embed.colour = discord.Colour.yellow()
+        player_list_str = "Minecraft server is starting..."
+    else:
+        info_embed.colour = discord.Colour.red()
+        player_list_str = "Minecraft server is not running!"
+    info_embed.add_field(
+        name="Players",
+        value=f"```fix\n{player_list_str}\n```",
+        inline=False,
+    )
+    # 投稿を編集する
+    print("Editing info message...")
+    channel = client.get_channel(channel_id)
+    message = await channel.fetch_message(info_message_id)
+    await message.edit(embed=info_embed)
+
+
+# マイクラのサーバーに接続しているプレイヤーの一覧を取得する。サーバーに誰もいない場合は空のリストを返す
+async def get_player_list():
+    # マイクラサーバーが起動しているかどうかを確認する
+    if not await is_server_running():
+        return []
+    # マイクラサーバーに接続して、プレイヤーの一覧を取得する
+    with mcrcon.MCRcon(SERVER_ADDRESS, SERVER_PASSWORD, RCON_PORT) as mcr:
+        resp = mcr.command("list")
+    # プレイヤーの一覧を取得する。online: のあとの文字列がプレイヤーの一覧
+    player_list = re.search(r"online: (.*)", resp).group(1).split(", ")
+    return player_list
+
+
 @client.event
 async def on_ready():
     await tree.sync()
     print(f"Logged in as {client.user.name}")
+    # info_messageを投稿する
+    if INFO_MESSAGE_ID is None:
+        await post_info_message()
+    # サーバーのディレクトリに移動する
+    os.chdir(SERVER_DIRECTORY)
+    # 賭けのレートを読み込む
+    await import_rate()
+    # 1分ごとに実行する
+    minute_loop.start()
     # Change presence to show server is not running
     await client.change_presence(activity=discord.Game(name=""))
     client.loop.create_task(check_player())
