@@ -256,17 +256,12 @@ async def status_server(interaction: discord.Interaction):
 async def list_server(interaction: discord.Interaction):
     if await is_server_running():
         # 参加人数を確認する
-        with mcrcon.MCRcon(SERVER_ADDRESS, SERVER_PASSWORD, RCON_PORT) as mcr:
-            resp = mcr.command("list")
+        player_list = await get_player_list()
         # プレイヤーがいない場合
-        if re.search(r"0 of a max of 20 players online", resp):
+        if len(player_list) == 0:
             await interaction.response.send_message("No players are playing!")
         # プレイヤーがいる場合
         else:
-            # プレイヤーの一覧を取得する。online: のあとの文字列がプレイヤーの一覧
-            player_list = re.search(r"online: (.*)", resp).group(1)
-            # プレイヤーの一覧を改行で区切って、リストに格納する
-            player_list = player_list.split(", ")
             player_count = len(player_list)
             # 表示のときは、改行を入れて見やすくする
             player_list = "\n".join(player_list)
