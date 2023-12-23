@@ -900,11 +900,13 @@ async def check_player():
                         await channel.send("```fix\nServer stopped!\n```")
             else:
                 # プレイヤーがいる場合は、point_upを実行する
-                player_list = re.search(r"online: (.*)", resp).group(1).split(", ")
-                await point_up(player_list)
-                # 5分後に再度確認する
-                await asyncio.sleep(300)
-                continue
+                player_list = await get_player_list()
+                print(f"Players: {player_list}")
+                if len(player_list) > 0:
+                    await point_up(player_list)
+                    # 5分後に再度確認する
+                    await asyncio.sleep(300)
+                    continue
         elif is_starting:
             # サーバーが起動中の場合は、アクティビティを変更して、サーバーが起動中であることを表示する
             await client.change_presence(activity=discord.Game(name="Starting..."))
@@ -946,10 +948,21 @@ async def import_rate():
             rate_data = json.load(f)
         rate_dicebet = rate_data.get("rate_dicebet", 1)
         rate_dicebet2 = rate_data.get("rate_dicebet2", 1)
-        rate_dicebet3 = rate_data.get("rete_dicebet3", 1)
+        rate_dicebet3 = rate_data.get("rate_dicebet3", 1)
     except:
         # JSONが存在しない場合は、レートをランダムに変更する
         await change_rate()
+        # JSONに書き込む
+        with open("rate.json", "w") as f:
+            json.dump(
+                {
+                    "rate_dicebet": rate_dicebet,
+                    "rate_dicebet2": rate_dicebet2,
+                    "rate_dicebet3": rate_dicebet3,
+                },
+                f,
+                indent=4,
+            )
 
 
 # 賭けのレートをランダムに変更する
@@ -965,7 +978,7 @@ async def change_rate():
             {
                 "rate_dicebet": rate_dicebet,
                 "rate_dicebet2": rate_dicebet2,
-                "rete_dicebet3": rate_dicebet3,
+                "rate_dicebet3": rate_dicebet3,
             },
             f,
             indent=4,
@@ -991,12 +1004,17 @@ async def post_info_message():
     player_list = await get_player_list()
     # embedを作成する
     info_embed = discord.Embed(title="Info", description="Dice Bet Rate and Players")
-    # 賭けのレートを小数点以下2桁まで表示する
-    info_embed.add_field(
-        name="Dice Bet Rate",
-        value=f"```fix\nDice Bet:  {rate_dicebet:.2f}\nDice Bet2: {rate_dicebet2:.2f}\nDice Bet3: {rate_dicebet3:.2f}\n```",
-        inline=False,
-    )
+    # rateがnoneでない場合は、rateを表示する
+    if (
+        rate_dicebet is not None
+        and rate_dicebet2 is not None
+        and rate_dicebet3 is not None
+    ):
+        info_embed.add_field(
+            name="Dice Bet Rate",
+            value=f"```fix\nDice Bet:  {rate_dicebet:.2f}\nDice Bet2: {rate_dicebet2:.2f}\nDice Bet3: {rate_dicebet3:.2f}\n```",
+            inline=False,
+        )
     # プレイヤーの一覧を表示する
     player_list_str = ""
     # 現在のサーバーの稼働状況によってembedの色を変える
@@ -1076,10 +1094,12 @@ async def get_player_list():
     if not await is_server_running():
         return []
     # マイクラサーバーに接続して、プレイヤーの一覧を取得する
-    with mcrcon.MCRcon(SERVER_ADDRESS, SERVER_PASSWORD, RCON_PORT) as mcr:
-        resp = mcr.command("list")
-    # プレイヤーの一覧を取得する。online: のあとの文字列がプレイヤーの一覧
-    player_list = re.search(r"online: (.*)", resp).group(1).split(", ")
+    try:
+        with mcrcon.MCRcon(SERVER_ADDRESS, SERVER_PASSWORD, RCON_PORT) as mcr:
+            resp = mcr.command("list")
+        player_list = re.search(r"online: (.*)", resp).group(1).split(", ")
+    except:
+        return []
     return player_list
 
 
