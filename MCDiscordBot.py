@@ -1053,7 +1053,7 @@ async def post_info_message():
     # 現在のサーバーの稼働状況によってembedの色を変える
     if await is_server_running():
         info_embed.colour = discord.Colour.green()
-        if len(player_list) == 0:
+        if len(player_list) == 1 and player_list[0] == "":
             player_list_str = "No players are playing!"
         else:
             for player in player_list:
@@ -1100,7 +1100,7 @@ async def edit_info_message(player_list, channel_id, info_message_id):
     # 現在のサーバーの稼働状況によってembedの色を変える
     if await is_server_running():
         info_embed.colour = discord.Colour.green()
-        if len(player_list) == 0:
+        if len(player_list) == 1 and player_list[0] == "":
             player_list_str = "No players are playing!"
         else:
             for player in player_list:
