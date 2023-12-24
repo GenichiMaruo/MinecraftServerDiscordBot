@@ -84,16 +84,23 @@ dice_emoji = [
 @tree.command(name="hello", description="Says hello to you")
 async def hello(interaction: discord.Interaction):
     await interaction.response.send_message(f"Hello, {interaction.user.mention}!")
+    # ログを出力する
+    print(f"{time.strftime("%Y-%m-%d %H:%M:%S")} {interaction.user.name}\t{interaction.user.id}\thello")
 
 
 # ネタコマンド
 @tree.command(name="stap", description="Innovative unknown cell")
 async def stap(interaction: discord.Interaction):
+    res = None
     # 100分の1の確率でStap細胞が出現する
     if random.randint(0, 100) == 0:
         await interaction.response.send_message("Stap細胞はあります！")
+        res = True
     else:
         await interaction.response.send_message("Stap細胞はありません…")
+        res = False
+    # ログを出力する
+    print(f"{time.strftime("%Y-%m-%d %H:%M:%S")} {interaction.user.name}\t{interaction.user.id}\tstap {res}")
 
 
 # 引数なしだと1つのサイコロ、引数があるとその数のサイコロを振る
@@ -117,6 +124,8 @@ async def dice(interaction: discord.Interaction, num: int = 1):
         dice_resp += f"{dice_emoji[i-1]}"
     resp += dice_resp
     await interaction.response.send_message(resp)
+    # ログを出力する
+    print(f"{time.strftime("%Y-%m-%d %H:%M:%S")} {interaction.user.name}\t{interaction.user.id}\tdice")
 
 
 # ヘルプコマンド
@@ -127,6 +136,7 @@ async def help(interaction: discord.Interaction):
         + "Minecraft Discord Bot\n"
         + "Commands:\n"
         + "/hello - Says hello to you\n"
+        + "/stap - Innovative unknown cell\n"
         + "/dice - Rolls a dice\n"
         + "/start - Starts the Minecraft server\n"
         + "/backup - Backs up the Minecraft server\n"
@@ -141,10 +151,17 @@ async def help(interaction: discord.Interaction):
         + "/check - Checks if your Minecraft account is linked to your Discord account\n"
         + "/unlink - Unlinks your Minecraft account from your Discord account\n"
         + "/point - Checks your server points\n"
+        + "/point_all - Checks everyone's server points\n"
         + "/mcshop - Shows the shop\n"
         + "/buy - Buy an item with your server points\n"
+        + "/givepoint - Give points to a player\n"
+        + "/givepoint_admin - Give points to a player\n"
+        + "/givepoint_all - Give points to everyone\n"
+        + "/dicebet - Bet points on a dice roll. If win, get [bet_amount*5] points\n"
         + "```"
     )
+    # ログを出力する
+    print(f"{time.strftime("%Y-%m-%d %H:%M:%S")} {interaction.user.name}\t{interaction.user.id}\thelp")
 
 
 @tree.command(name="start", description="Starts the Minecraft server")
@@ -186,6 +203,8 @@ async def start_server(interaction: discord.Interaction):
         is_starting = False
         # Change presence to show server is running
         await client.change_presence(activity=discord.Game(name=SERVER_NAME))
+    # ログを出力する
+    print(f"{time.strftime("%Y-%m-%d %H:%M:%S")} {interaction.user.name}\t{interaction.user.id}\tstart")
 
 
 async def start_process():
@@ -212,6 +231,8 @@ async def backup_server(interaction: discord.Interaction):
     await interaction.response.send_message(
         "Backup Command Received! (Not implemented)"
     )
+    # ログを出力する
+    print(f"{time.strftime("%Y-%m-%d %H:%M:%S")} {interaction.user.name}\t{interaction.user.id}\tbackup")
 
 
 @tree.command(name="stop", description="Stops the Minecraft server")
@@ -241,6 +262,8 @@ async def stop_server(interaction: discord.Interaction):
         await sent_message.edit(content="```fix\nMinecraft server stopped!\n```")
     else:
         await interaction.response.send_message("Minecraft server is not running!")
+    # ログを出力する
+    print(f"{time.strftime("%Y-%m-%d %H:%M:%S")} {interaction.user.name}\t{interaction.user.id}\tstop")
 
 
 @tree.command(name="status", description="Checks the status of the Minecraft server")
@@ -249,6 +272,8 @@ async def status_server(interaction: discord.Interaction):
         await interaction.response.send_message("Minecraft server is running!")
     else:
         await interaction.response.send_message("Minecraft server is not running!")
+    # ログを出力する
+    print(f"{time.strftime("%Y-%m-%d %H:%M:%S")} {interaction.user.name}\t{interaction.user.id}\tstatus")
 
 
 # Minecraft Server に接続しているプレイヤーの一覧を表示する
@@ -269,6 +294,8 @@ async def list_server(interaction: discord.Interaction):
             await interaction.response.send_message(resp)
     else:
         await interaction.response.send_message("Minecraft server is not running!")
+    # ログを出力する
+    print(f"{time.strftime("%Y-%m-%d %H:%M:%S")} {interaction.user.name}\t{interaction.user.id}\tlist")
 
 
 # 管理者のみが実行できるdiscord bot終了コマンド
@@ -277,6 +304,8 @@ async def list_server(interaction: discord.Interaction):
 async def exit_bot(interaction: discord.Interaction):
     await interaction.response.send_message("Exit Command Received!")
     await client.close()
+    # ログを出力する
+    print(f"{time.strftime("%Y-%m-%d %H:%M:%S")} {interaction.user.name}\t{interaction.user.id}\texit")
 
 
 # 管理者のみが実行できるsayコマンド
@@ -290,6 +319,8 @@ async def say_server(interaction: discord.Interaction, message: str):
         await interaction.response.send_message("Message sent!")
     else:
         await interaction.response.send_message("Minecraft server is not running!")
+    # ログを出力する
+    print(f"{time.strftime("%Y-%m-%d %H:%M:%S")} {interaction.user.name}\t{interaction.user.id}\tsay")
 
 
 # 管理者のみが実行できるサーバー操作コマンド
@@ -306,6 +337,8 @@ async def say_server(interaction: discord.Interaction, message: str):
         await interaction.response.send_message("Message sent!")
     else:
         await interaction.response.send_message("Minecraft server is not running!")
+    # ログを出力する
+    print(f"{time.strftime("%Y-%m-%d %H:%M:%S")} {interaction.user.name}\t{interaction.user.id}\tcommand")
 
 
 # Point Systemに登録する
@@ -319,6 +352,8 @@ async def register(interaction: discord.Interaction):
         # file_io.pyの関数を使ってdiscord_idを登録する
         file_io.add_player_data(interaction.user.id, None, 0, JSON_FILE_NAME)
         await interaction.response.send_message("Registration completed!")
+    # ログを出力する
+    print(f"{time.strftime("%Y-%m-%d %H:%M:%S")} {interaction.user.name}\t{interaction.user.id}\tregister")
 
 
 # MinecraftのidとDiscordのidを紐付ける
@@ -394,6 +429,8 @@ async def link_account(interaction: discord.Interaction, minecraft_id: str):
             await interaction.channel.send(
                 "Linking failed! You are not logged in to Minecraft!"
             )
+    # ログを出力する
+    print(f"{time.strftime("%Y-%m-%d %H:%M:%S")} {interaction.user.name}\t{interaction.user.id}\tlink")
 
 
 # MinecraftのidとDiscordのidが紐付いているかどうかを確認する
@@ -408,6 +445,8 @@ async def check_account(interaction: discord.Interaction):
         await interaction.response.send_message("Your Minecraft ID is linked!")
     else:
         await interaction.response.send_message("Your Minecraft ID is not linked!")
+    # ログを出力する
+    print(f"{time.strftime("%Y-%m-%d %H:%M:%S")} {interaction.user.name}\t{interaction.user.id}\tcheck")
 
 
 # MinecraftのidとDiscordのidを紐付けを解除する
@@ -424,6 +463,8 @@ async def unlink_account(interaction: discord.Interaction):
         await interaction.response.send_message("Unlinking completed!")
     else:
         await interaction.response.send_message("Your Minecraft ID is not linked!")
+    # ログを出力する
+    print(f"{time.strftime("%Y-%m-%d %H:%M:%S")} {interaction.user.name}\t{interaction.user.id}\tunlink")
 
 
 # サーバーポイントを確認する
@@ -432,6 +473,8 @@ async def check_point(interaction: discord.Interaction):
     # ポイントを取得する
     point = file_io.get_points(interaction.user.id, JSON_FILE_NAME)
     await interaction.response.send_message(f"Your points: ```fix\n{point}\n```")
+    # ログを出力する
+    print(f"{time.strftime("%Y-%m-%d %H:%M:%S")} {interaction.user.name}\t{interaction.user.id}\tpoint")
 
 
 # 全員のサーバーポイントを確認する(管理者のみ)
@@ -453,6 +496,8 @@ async def check_point_all(interaction: discord.Interaction):
     # 色を設定する
     point_embed.colour = discord.Colour.orange()
     await interaction.response.send_message(embed=point_embed)
+    # ログを出力する
+    print(f"{time.strftime("%Y-%m-%d %H:%M:%S")} {interaction.user.name}\t{interaction.user.id}\tpoint_all")
 
 
 # サーバーポイントで購入できるアイテムの一覧を表示する
@@ -491,6 +536,8 @@ async def show_shop(interaction: discord.Interaction, page: int = 1):
                 inline=False,
             )
     await interaction.response.send_message(embed=shop_embed)
+    # ログを出力する
+    print(f"{time.strftime("%Y-%m-%d %H:%M:%S")} {interaction.user.name}\t{interaction.user.id}\tmcshop {page}")
 
 
 # サーバーポイントでマイクラのアイテムを購入する
@@ -499,6 +546,10 @@ async def buy_item(interaction: discord.Interaction, item_id: int, amount: int =
     # マイナスの個数を購入しようとしていないかどうかを確認する
     if amount < 0:
         await interaction.response.send_message("You cannot buy minus items!")
+        # ログを出力する
+        print(
+            f"{time.strftime("%Y-%m-%d %H:%M:%S")} {interaction.user.name}\t{interaction.user.id}\tbuy {item_id} {amount} failed (minus amount)"
+        )
         return
     # JSONからアイテムの情報を読み込む
     with open("shop_list.json", "r") as f:
@@ -507,6 +558,10 @@ async def buy_item(interaction: discord.Interaction, item_id: int, amount: int =
     # マイクラサーバーが起動しているかどうかを確認する
     if not await is_server_running():
         await interaction.response.send_message("Minecraft server is not running!")
+        # ログを出力する
+        print(
+            f"{time.strftime("%Y-%m-%d %H:%M:%S")} {interaction.user.name}\t{interaction.user.id}\tbuy {item_id} {amount} failed (server not running)"
+        )
         return
     # マイクラサーバーに接続して、プレイヤーの一覧を取得する
     with mcrcon.MCRcon(SERVER_ADDRESS, SERVER_PASSWORD, RCON_PORT) as mcr:
@@ -516,10 +571,18 @@ async def buy_item(interaction: discord.Interaction, item_id: int, amount: int =
     minecraft_id = file_io.get_minecraft_id(interaction.user.id, JSON_FILE_NAME)
     if minecraft_id is None:
         await interaction.response.send_message("Your Minecraft ID is not linked!")
+        # ログを出力する
+        print(
+            f"{time.strftime("%Y-%m-%d %H:%M:%S")} {interaction.user.name}\t{interaction.user.id}\tbuy {item_id} {amount} failed (not linked)"
+        )
         return
     # マイクラにログインしているかどうかを確認する
     if minecraft_id not in players:
         await interaction.response.send_message("You are not logged in to Minecraft!")
+        # ログを出力する
+        print(
+            f"{time.strftime("%Y-%m-%d %H:%M:%S")} {interaction.user.name}\t{interaction.user.id}\tbuy {item_id} {amount} failed (not logged in)"
+        )
         return
     # アイテムのIDが存在するかどうかを確認する
     for item in items_list:
@@ -539,6 +602,10 @@ async def buy_item(interaction: discord.Interaction, item_id: int, amount: int =
                     resp = mcr.command(f"clear {minecraft_id} {item['item_command']} 0")
                 if re.search(r"Cleared 0 items", resp):
                     await interaction.response.send_message("Purchase failed!")
+                    # ログを出力する
+                    print(
+                        f"{time.strftime("%Y-%m-%d %H:%M:%S")} {interaction.user.name}\t{interaction.user.id}\tbuy {item_id} {amount} failed (minecraft command failed)"
+                    )
                     return
                 # ポイントを減らす
                 file_io.add_points(
@@ -547,10 +614,18 @@ async def buy_item(interaction: discord.Interaction, item_id: int, amount: int =
                 # プレイヤーにアイテムが購入されたことをメッセージで通知する
                 resp_msg = f"{interaction.user.mention} purchase completed!\n```fix\nYou purchased {item['name']} x {amount}!\n```"
                 await interaction.response.send_message(resp_msg)
+                # ログを出力する
+                print(
+                    f"{time.strftime("%Y-%m-%d %H:%M:%S")} {interaction.user.name}\t{interaction.user.id}\tbuy {item_id} {amount} success"
+                )
                 return
             else:
                 await interaction.response.send_message(
                     "You do not have enough points!"
+                )
+                # ログを出力する
+                print(
+                    f"{time.strftime("%Y-%m-%d %H:%M:%S")} {interaction.user.name}\t{interaction.user.id}\tbuy {item_id} {amount} failed (not enough points)"
                 )
                 return
     await interaction.response.send_message("Invalid item ID!")
@@ -559,6 +634,10 @@ async def buy_item(interaction: discord.Interaction, item_id: int, amount: int =
 # ポイントを渡す
 @tree.command(name="givepoint", description="Give points to a player")
 async def give_point(interaction: discord.Interaction, amount: int, user: discord.User):
+    # ログを出力する
+    print(
+        f"{time.strftime("%Y-%m-%d %H:%M:%S")} {interaction.user.name}\t{interaction.user.id}\tgivepoint {amount} {user.name}"
+    )
     # 自分にポイントを渡そうとしていないかどうかを確認する
     if interaction.user.id == user.id:
         await interaction.response.send_message("You cannot give points to yourself!")
@@ -597,6 +676,10 @@ async def give_point(interaction: discord.Interaction, amount: int, user: discor
 async def give_point_admin(
     interaction: discord.Interaction, amount: int, user: discord.User
 ):
+    # ログを出力する
+    print(
+        f"{time.strftime("%Y-%m-%d %H:%M:%S")} {interaction.user.name}\t{interaction.user.id}\tgivepoint_admin {amount} {user.name}"
+    )
     # ポイントを渡す相手がregisterされているかどうかを確認する
     result = file_io.is_registered(user.id, JSON_FILE_NAME)
     if not result:
@@ -614,6 +697,10 @@ async def give_point_admin(
 @tree.command(name="givepoint_all", description="Give points to everyone")
 @app_commands.default_permissions(administrator=True)
 async def give_point_all(interaction: discord.Interaction, amount: int):
+    # ログを出力する
+    print(
+        f"{time.strftime("%Y-%m-%d %H:%M:%S")} {interaction.user.name}\t{interaction.user.id}\tgivepoint_all {amount}"
+    )
     await interaction.response.send_message("Give Command Received!")
     # ポイントを渡す
     file_io.add_points_all(amount, JSON_FILE_NAME)
@@ -704,6 +791,10 @@ async def dice_bet(interaction: discord.Interaction, amount: str, num: int):
                 inline=False,
             )
     await interaction.response.send_message(embed=dice_bet_embed)
+    # ログを出力する
+    print(
+        f"{time.strftime("%Y-%m-%d %H:%M:%S")} {interaction.user.name}\t{interaction.user.id}\tdicebet {amount} {num}"
+    )
 
 
 # 複数のdiceの合計を賭ける
@@ -803,6 +894,10 @@ async def dice_bet2(
                 inline=False,
             )
     await interaction.response.send_message(embed=dice_bet_embed)
+    # ログを出力する
+    print(
+        f"{time.strftime("%Y-%m-%d %H:%M:%S")} {interaction.user.name}\t{interaction.user.id}\tdicebet2 {amount} {dice_count} {num}"
+    )
 
 
 # 2個のサイコロの合計が丁か半かを賭ける
@@ -901,6 +996,10 @@ async def dice_bet3(interaction: discord.Interaction, amount: str, choice: str):
                 inline=False,
             )
     await interaction.response.send_message(embed=dice_bet_embed)
+    # ログを出力する
+    print(
+        f"{time.strftime("%Y-%m-%d %H:%M:%S")} {interaction.user.name}\t{interaction.user.id}\tdicebet3 {amount} {choice}"
+    )
 
 
 async def create_error_embed(error_msg):
