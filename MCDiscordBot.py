@@ -436,7 +436,7 @@ async def check_point(interaction: discord.Interaction):
 
 # サーバーポイントで購入できるアイテムの一覧を表示する
 @tree.command(name="mcshop", description="Shows the shop")
-async def show_shop(interaction: discord.Interaction):
+async def show_shop(interaction: discord.Interaction, page: int = 1):
     # JSONからアイテムの情報を読み込む
     with open("shop_list.json", "r") as f:
         items_data = json.load(f)
@@ -445,12 +445,30 @@ async def show_shop(interaction: discord.Interaction):
     shop_embed = discord.Embed(
         title="Server Shop", description="Available Items for Purchase"
     )
+
+    # ページ数を計算する
+    page_num = len(items_list) // 6 + 1
+    if len(items_list) % 6 == 0:
+        page_num -= 1
+    # ページ数が範囲外の場合は、1ページ目を表示する
+    if page < 1 or page > page_num:
+        page = 1
+    # 表示するアイテムの範囲を計算する
+    start = (page - 1) * 6
+    end = start + 6
+    # 表示するアイテムの範囲を確認する
+    if end > len(items_list):
+        end = len(items_list)
+    # 表示するアイテムの範囲を表示する
+    shop_embed.set_footer(text=f"Page {page}/{page_num}")
+    # アイテムの一覧を表示する
     for item in items_list:
-        shop_embed.add_field(
-            name=f"ID: {item['id']}\n{item['name']} - Price: {item['price']} points",
-            value=f"Description: {item['description']}",
-            inline=False,
-        )
+        if start <= item["id"] - 1 < end:
+            shop_embed.add_field(
+                name=f"ID: {item['id']}\n{item['name']} - Price: {item['price']} points",
+                value=f"Description: {item['description']}",
+                inline=False,
+            )
     await interaction.response.send_message(embed=shop_embed)
 
 
