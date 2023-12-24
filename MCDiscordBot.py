@@ -1139,6 +1139,10 @@ async def change_rate():
             f,
             indent=4,
         )
+    # ログを出力する
+    print(
+        f"{get_date_str()} Changed rate ({rate_dicebet:.2f},{rate_dicebet2:.2f},{rate_dicebet3:.2f})"
+    )
 
 
 # 1分ごとに実行する
