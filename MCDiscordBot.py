@@ -588,8 +588,15 @@ async def give_point_all(interaction: discord.Interaction, amount: int):
     name="dicebet",
     description="Bet points on a dice roll. If win, get [bet_amount*5] points",
 )
-async def dice_bet(interaction: discord.Interaction, amount: int, num: int):
+async def dice_bet(interaction: discord.Interaction, amount: str, num: int):
     global rate_dicebet
+    if amount == "all":
+        amount = file_io.get_points(interaction.user.id, JSON_FILE_NAME)
+    else:
+        if not amount.isdigit():
+            await interaction.response.send_message("Invalid amount!")
+            return
+        amount = int(amount)
     # minusのポイントを賭けようとしていないかどうかを確認する
     if amount < 0:
         await interaction.response.send_message("You cannot bet minus points!")
@@ -666,9 +673,16 @@ async def dice_bet(interaction: discord.Interaction, amount: int, num: int):
     description="Bet points on a dice roll. If win, get [bet_amount*dice_count*5] points",
 )
 async def dice_bet2(
-    interaction: discord.Interaction, amount: int, dice_count: int, num: int
+    interaction: discord.Interaction, amount: str, dice_count: int, num: int
 ):
     global rate_dicebet2
+    if amount == "all":
+        amount = file_io.get_points(interaction.user.id, JSON_FILE_NAME)
+    else:
+        if not amount.isdigit():
+            await interaction.response.send_message("Invalid amount!")
+            return
+        amount = int(amount)
     # minusのポイントを賭けようとしていないかどうかを確認する
     if amount < 0:
         await interaction.response.send_message("You cannot bet minus points!")
@@ -757,8 +771,15 @@ async def dice_bet2(
     name="dicebet3",
     description='"even" or "odd" on the sum of two dice',
 )
-async def dice_bet3(interaction: discord.Interaction, amount: int, choice: str):
+async def dice_bet3(interaction: discord.Interaction, amount: str, choice: str):
     global rate_dicebet3
+    if amount == "all":
+        amount = file_io.get_points(interaction.user.id, JSON_FILE_NAME)
+    else:
+        if not amount.isdigit():
+            await interaction.response.send_message("Invalid amount!")
+            return
+        amount = int(amount)
     # minusのポイントを賭けようとしていないかどうかを確認する
     if amount < 0:
         await interaction.response.send_message("You cannot bet minus points!")
@@ -1071,11 +1092,18 @@ async def edit_info_message(player_list, channel_id, info_message_id):
     else:
         info_embed.colour = discord.Colour.red()
         player_list_str = "Minecraft server is not running!"
-    info_embed.add_field(
-        name="Players",
-        value=f"```fix\n{player_list_str}\n```",
-        inline=False,
-    )
+    if len(player_list) > 0:
+        info_embed.add_field(
+            name="Players",
+            value=f"```fix\n{player_list_str}\n```",
+            inline=False,
+        )
+    else:
+        info_embed.add_field(
+            name="",
+            value=f"```fix\nNo players are playing!\n```",
+            inline=False,
+        )
     # 投稿を編集する
     print("Editing info message...")
     channel = client.get_channel(channel_id)
