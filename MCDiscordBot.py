@@ -446,7 +446,7 @@ async def check_point_all(interaction: discord.Interaction):
     resp = "```fix\n"
     for user_id, point in point_list:
         user = await client.fetch_user(user_id)
-        resp += f"{user.name:10} : {point}\n"
+        resp += f"{user.name:12} : {point}\n"
     resp += "```"
     # embedを使って、ポイントを表示する
     point_embed = discord.Embed(title="Server Points", description=resp)
@@ -1074,7 +1074,7 @@ async def post_info_message():
     # 現在のサーバーの稼働状況によってembedの色を変える
     if await is_server_running():
         info_embed.colour = discord.Colour.green()
-        if len(player_list) == 1 and player_list[0] == "":
+        if len(player_list) == 0:
             player_list_str = "No players are playing!"
         else:
             for player in player_list:
@@ -1121,7 +1121,7 @@ async def edit_info_message(player_list, channel_id, info_message_id):
     # 現在のサーバーの稼働状況によってembedの色を変える
     if await is_server_running():
         info_embed.colour = discord.Colour.green()
-        if len(player_list) == 1 and player_list[0] == "":
+        if len(player_list) == 0:
             player_list_str = "No players are playing!"
         else:
             for player in player_list:
@@ -1154,6 +1154,8 @@ async def get_player_list():
         with mcrcon.MCRcon(SERVER_ADDRESS, SERVER_PASSWORD, RCON_PORT) as mcr:
             resp = mcr.command("list")
         player_list = re.search(r"online: (.*)", resp).group(1).split(", ")
+        if player_list[0] == "":
+            return []
     except:
         return []
     return player_list
