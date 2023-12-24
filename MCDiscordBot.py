@@ -537,7 +537,9 @@ async def show_shop(interaction: discord.Interaction, page: int = 1):
             )
     await interaction.response.send_message(embed=shop_embed)
     # ログを出力する
-    print(f"{get_date_str()} {interaction.user.name} {interaction.user.id}\tmcshop {page}")
+    print(
+        f"{get_date_str()} {interaction.user.name} {interaction.user.id}\tmcshop {page}"
+    )
 
 
 # サーバーポイントでマイクラのアイテムを購入する
@@ -1014,7 +1016,8 @@ async def create_error_embed(error_msg):
 async def check_player():
     global is_starting
     while True:
-        print("Checking for players...")
+        # ログを出力する
+        print(f"{get_date_str()} Checking players")
         if await is_server_running():
             # アクティビティを変更して、サーバーが起動していることを表示する
             await client.change_presence(activity=discord.Game(name=SERVER_NAME))
@@ -1209,7 +1212,6 @@ async def post_info_message():
     print(f"{get_date_str()} Updated info_message_id")
 
 
-
 # Player_listを引数に取り、指定の投稿を編集して、賭けのレートとプレイヤーの一覧を表示する
 async def edit_info_message(player_list, channel_id, info_message_id):
     # embedを作成する
@@ -1264,6 +1266,7 @@ async def get_player_list():
     except:
         return []
     return player_list
+
 
 def get_date_str():
     return time.strftime("%Y-%m-%d %H:%M:%S")
