@@ -1055,8 +1055,9 @@ async def post_info_message():
         info_embed.colour = discord.Colour.green()
         if len(player_list) == 0:
             player_list_str = "No players are playing!"
-        for player in player_list:
-            player_list_str += f"{player}\n"
+        else:
+            for player in player_list:
+                player_list_str += f"{player}\n"
     else:
         info_embed.colour = discord.Colour.red()
         player_list_str = "Minecraft server is not running!"
@@ -1101,8 +1102,9 @@ async def edit_info_message(player_list, channel_id, info_message_id):
         info_embed.colour = discord.Colour.green()
         if len(player_list) == 0:
             player_list_str = "No players are playing!"
-        for player in player_list:
-            player_list_str += f"{player}\n"
+        else:
+            for player in player_list:
+                player_list_str += f"{player}\n"
     elif is_starting:
         info_embed.colour = discord.Colour.yellow()
         player_list_str = "Minecraft server is starting..."
