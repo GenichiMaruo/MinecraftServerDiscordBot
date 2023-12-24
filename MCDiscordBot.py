@@ -434,6 +434,27 @@ async def check_point(interaction: discord.Interaction):
     await interaction.response.send_message(f"Your points: ```fix\n{point}\n```")
 
 
+# 全員のサーバーポイントを確認する(管理者のみ)
+@tree.command(name="point_all", description="Checks everyone's server points")
+@app_commands.default_permissions(administrator=True)
+async def check_point_all(interaction: discord.Interaction):
+    # ポイントを取得する
+    point_list = file_io.get_points_all(JSON_FILE_NAME)
+    # ポイントが多い順に並び替える
+    point_list.sort(key=lambda x: x[1], reverse=True)
+    # ポイントを表示する
+    resp = "```fix\n"
+    for user_id, point in point_list:
+        user = await client.fetch_user(user_id)
+        resp += f"{user.name:10} : {point}\n"
+    resp += "```"
+    # embedを使って、ポイントを表示する
+    point_embed = discord.Embed(title="Server Points", description=resp)
+    # 色を設定する
+    point_embed.colour = discord.Colour.orange()
+    await interaction.response.send_message(embed=point_embed)
+
+
 # サーバーポイントで購入できるアイテムの一覧を表示する
 @tree.command(name="mcshop", description="Shows the shop")
 async def show_shop(interaction: discord.Interaction, page: int = 1):

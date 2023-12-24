@@ -141,6 +141,16 @@ def get_points(discord_id, file_path):
         return None
     else:
         return player_data["points"]
+    
+# 全員のポイントを取得してリストで返す
+def get_points_all(file_path):
+    with open(file_path, "r") as file:
+        data = json.load(file)
+    # user_idとpointsを格納するリストを作成
+    points_list = []
+    for player_data in data["players"]:
+        points_list.append([player_data["discord_id"], player_data["points"]])
+    return points_list
 
 
 # registerされているプレイヤーの数を取得する
