@@ -935,7 +935,6 @@ async def check_player():
             else:
                 # プレイヤーがいる場合は、point_upを実行する
                 player_list = await get_player_list()
-                print(f"Players: {player_list}")
                 if len(player_list) > 0:
                     await point_up(player_list)
                     # 5分後に再度確認する
@@ -1110,18 +1109,11 @@ async def edit_info_message(player_list, channel_id, info_message_id):
     else:
         info_embed.colour = discord.Colour.red()
         player_list_str = "Minecraft server is not running!"
-    if len(player_list) > 0:
-        info_embed.add_field(
-            name="Players",
-            value=f"```fix\n{player_list_str}\n```",
-            inline=False,
-        )
-    else:
-        info_embed.add_field(
-            name="",
-            value=f"```fix\nNo players are playing!\n```",
-            inline=False,
-        )
+    info_embed.add_field(
+        name="Players",
+        value=f"```fix\n{player_list_str}\n```",
+        inline=False,
+    )
     # 投稿を編集する
     print("Editing info message...")
     channel = client.get_channel(channel_id)
