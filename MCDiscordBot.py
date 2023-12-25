@@ -356,6 +356,24 @@ async def register(interaction: discord.Interaction):
     print(f"{get_date_str()} {interaction.user.name} {interaction.user.id}\tregister")
 
 
+# Point Systemに登録する(管理者のみ)
+@tree.command(name="register_admin", description="Registers you to the point system")
+@app_commands.default_permissions(administrator=True)
+async def register_admin(interaction: discord.Interaction, user: discord.User):
+    # user_data.json からdiscord_idの紐付けを確認する
+    result = file_io.is_registered(user.id, JSON_FILE_NAME)
+    if result:
+        await interaction.response.send_message("The user is already registered!")
+    else:
+        # file_io.pyの関数を使ってdiscord_idを登録する
+        file_io.add_player_data(user.id, None, 0, JSON_FILE_NAME)
+        await interaction.response.send_message("Registration completed!")
+    # ログを出力する
+    print(
+        f"{get_date_str()} {interaction.user.name} {interaction.user.id}\tregister admin {user.name} {user.id}"
+    )
+
+
 # MinecraftのidとDiscordのidを紐付ける
 @tree.command(
     name="link", description="Links your Minecraft account to your Discord account"
@@ -431,6 +449,29 @@ async def link_account(interaction: discord.Interaction, minecraft_id: str):
             )
     # ログを出力する
     print(f"{get_date_str()} {interaction.user.name} {interaction.user.id}\tlink")
+
+
+# MinecraftのidとDiscordのidを紐付ける(管理者のみ)
+@tree.command(
+    name="link_admin",
+    description="Links your Minecraft account to your Discord account",
+)
+@app_commands.default_permissions(administrator=True)
+async def link_account_admin(
+    interaction: discord.Interaction, user: discord.User, minecraft_id: str
+):
+    # 認証なしでマイクラのidとdiscordのidを紐付ける
+    if file_io.link(user.id, minecraft_id, JSON_FILE_NAME) is False:
+        await interaction.response.send_message("Please register first!")
+        return
+    # プレイヤーに紐付けが完了したことをdiscordに通知する
+    await interaction.channel.send(
+        f"```fix\n{interaction.user.name} linked {minecraft_id}!\n```"
+    )
+    # ログを出力する
+    print(
+        f"{get_date_str()} {interaction.user.name} {interaction.user.id}\tlink admin {user.name} {user.id}"
+    )
 
 
 # MinecraftのidとDiscordのidが紐付いているかどうかを確認する
