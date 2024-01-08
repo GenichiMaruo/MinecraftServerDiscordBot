@@ -511,9 +511,20 @@ async def unlink_account(interaction: discord.Interaction):
 # サーバーポイントを確認する
 @tree.command(name="point", description="Checks your server points")
 async def check_point(interaction: discord.Interaction):
+    # responseを送信する. コマンド送信者をメンションする
+    await interaction.response.send_message(
+        f"{interaction.user.mention} point command received!"
+    )
     # ポイントを取得する
     point = file_io.get_points(interaction.user.id, JSON_FILE_NAME)
-    await interaction.response.send_message(f"Your points: ```fix\n{point}\n```")
+    # ポイントを3桁ごとにカンマを入れて表示する
+    point = "{:,}".format(point)
+    # ポイントを表示する. 誰のポイントかわかるようにする
+    point_embed = discord.Embed(title=f"{interaction.user.name}'s Server Points", description=f"```fix\n{point}\n```")
+    # 色を設定する
+    point_embed.colour = discord.Colour.orange()
+    try: await interaction.channel.send(embed=point_embed)
+    except: print("Failed to send embed")
     # ログを出力する
     print(f"{get_date_str()} {interaction.user.name} {interaction.user.id}\tpoint")
 
@@ -522,6 +533,11 @@ async def check_point(interaction: discord.Interaction):
 @tree.command(name="point_all", description="Checks everyone's server points")
 @app_commands.default_permissions(administrator=True)
 async def check_point_all(interaction: discord.Interaction):
+    global client
+    # responseを送信する. コマンド送信者をメンションする
+    await interaction.response.send_message(
+        f"{interaction.user.mention} point_all command received!"
+    )
     # ポイントを取得する
     point_list = file_io.get_points_all(JSON_FILE_NAME)
     # ポイントが多い順に並び替える
@@ -529,6 +545,10 @@ async def check_point_all(interaction: discord.Interaction):
     # ポイントを表示する
     resp = "```fix\n"
     for user_id, point in point_list:
+        # ポイントを3桁ごとにカンマを入れて表示する
+        point = "{:,}".format(point)
+        # ポイントは最低9桁で右寄せする
+        point = point.rjust(9)
         user = await client.fetch_user(user_id)
         resp += f"{user.name:12} : {point}\n"
     resp += "```"
@@ -536,7 +556,8 @@ async def check_point_all(interaction: discord.Interaction):
     point_embed = discord.Embed(title="Server Points", description=resp)
     # 色を設定する
     point_embed.colour = discord.Colour.orange()
-    await interaction.response.send_message(embed=point_embed)
+    try: await interaction.channel.send(embed=point_embed)
+    except: print("Failed to send embed")
     # ログを出力する
     print(f"{get_date_str()} {interaction.user.name} {interaction.user.id}\tpoint_all")
 
