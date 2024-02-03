@@ -784,6 +784,24 @@ async def give_point_all(interaction: discord.Interaction, amount: int):
     )
 
 
+# 管理者のみが実行できるレートを再設定するコマンド
+@tree.command(name="setrate", description="Set the rate for betting")
+@app_commands.default_permissions(administrator=True)
+async def set_rate(interaction: discord.Interaction, game: str, rate: float):
+    global rate_dicebet, rate_dicebet2, rate_dicebet3
+    if game == "dicebet":
+        rate_dicebet = rate
+    elif game == "dicebet2":
+        rate_dicebet2 = rate
+    elif game == "dicebet3":
+        rate_dicebet3 = rate
+    else:
+        await interaction.response.send_message("Invalid game!")
+        return
+    await interaction.response.send_message(f"Rate for {game} set to {rate}!")
+    print(f"{get_date_str()} {interaction.user.name} {interaction.user.id}\tsetrate")
+
+
 # サイコロでポイントを賭ける
 @tree.command(
     name="dicebet",
