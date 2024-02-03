@@ -54,9 +54,10 @@ class GameBlackJack:
             await self.stand()
         else:
             print("reaction error")
-            return
+            return None
         if not self.is_playing:
-            await self.judge()
+            return await self.judge()
+        return None
 
     async def hit(self):
         print("hit")

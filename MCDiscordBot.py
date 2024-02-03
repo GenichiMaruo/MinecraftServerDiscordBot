@@ -1453,9 +1453,10 @@ async def on_raw_reaction_add(payload):
             if message.id == game.message_id and user.id == game.player_id:
                 # リアクションに対応する処理を実行するまえにデバッグ用にリアクションの情報を出力する
                 print(f"{get_date_str()} {user.name} {user.id} reacted to {game}")
-                print(f"{get_date_str()} {payload.emoji.name}")
                 # リアクションに対応する処理を実行する
-                await game.react(payload)
+                value = await game.react(payload)
+                if value is not None:
+                    file_io.add_points(user.id, value, JSON_FILE_NAME)
                 # メッセージを編集する
                 await message.edit(embed=game.get_embed())
                 # is_playingがFalseになった場合は、blackjack_gameから削除する
