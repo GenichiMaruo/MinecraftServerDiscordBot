@@ -12,6 +12,7 @@ from discord import app_commands
 from discord.ext import tasks
 
 import file_io
+import trump_game_bj
 
 TOKEN = None
 SERVER_DIRECTORY = "./MINECRAFT/server"
@@ -28,6 +29,7 @@ SERVER_PASSWORD = None
 INFO_MESSAGE_ID = None
 
 intents = discord.Intents.default()
+intents.reactions = True
 client = discord.Client(intents=intents)
 tree = app_commands.CommandTree(client=client)
 last_execution_time = 0
@@ -37,6 +39,8 @@ is_starting = False
 rate_dicebet = None
 rate_dicebet2 = None
 rate_dicebet3 = None
+# blackjackの実行中のゲームの実行者のdiscord_idリスト
+blackjack_game = []
 
 # config.jsonからdiscordのtokenとchannel_idを読み込む
 try:
@@ -520,11 +524,16 @@ async def check_point(interaction: discord.Interaction):
     # ポイントを3桁ごとにカンマを入れて表示する
     point = "{:,}".format(point)
     # ポイントを表示する. 誰のポイントかわかるようにする
-    point_embed = discord.Embed(title=f"{interaction.user.name}'s Server Points", description=f"```fix\n{point}\n```")
+    point_embed = discord.Embed(
+        title=f"{interaction.user.name}'s Server Points",
+        description=f"```fix\n{point}\n```",
+    )
     # 色を設定する
     point_embed.colour = discord.Colour.orange()
-    try: await interaction.channel.send(embed=point_embed)
-    except: print("Failed to send embed")
+    try:
+        await interaction.channel.send(embed=point_embed)
+    except:
+        print("Failed to send embed")
     # ログを出力する
     print(f"{get_date_str()} {interaction.user.name} {interaction.user.id}\tpoint")
 
@@ -556,8 +565,10 @@ async def check_point_all(interaction: discord.Interaction):
     point_embed = discord.Embed(title="Server Points", description=resp)
     # 色を設定する
     point_embed.colour = discord.Colour.orange()
-    try: await interaction.channel.send(embed=point_embed)
-    except: print("Failed to send embed")
+    try:
+        await interaction.channel.send(embed=point_embed)
+    except:
+        print("Failed to send embed")
     # ログを出力する
     print(f"{get_date_str()} {interaction.user.name} {interaction.user.id}\tpoint_all")
 
@@ -1066,6 +1077,68 @@ async def dice_bet3(interaction: discord.Interaction, amount: str, choice: str):
     )
 
 
+# blackjackでポイントを賭ける
+@tree.command(
+    name="blackjack",
+    description="Bet points on a blackjack game. If win, get [bet_amount*2] points",
+)
+async def blackjack(interaction: discord.Interaction, amount: str):
+    global blackjack_game
+    if amount == "all":
+        amount = file_io.get_points(interaction.user.id, JSON_FILE_NAME)
+    else:
+        if not amount.isdigit():
+            await interaction.response.send_message("Invalid amount!")
+            return
+        amount = int(amount)
+    # minusのポイントを賭けようとしていないかどうかを確認する
+    if amount < 0:
+        await interaction.response.send_message("You cannot bet minus points!")
+        return
+    # registerされているかどうかを確認する
+    result = file_io.is_registered(interaction.user.id, JSON_FILE_NAME)
+    if not result:
+        await interaction.response.send_message("You are not registered!")
+        return
+    # ポイントが足りているかどうかを確認する
+    point = file_io.get_points(interaction.user.id, JSON_FILE_NAME)
+    if point < amount:
+        await interaction.response.send_message("You do not have enough points!")
+        return
+    # 賭けの最低額を確認する
+    if amount < 100:
+        await interaction.response.send_message("Minimum bet is 100 points!")
+        return
+    # すでに実行中のゲームがあるかどうかを確認する
+    for game in blackjack_game:
+        if game.get_player_id() == interaction.user.id:
+            # ゲームがすでに実行中であることを通知する
+            await interaction.response.send_message("You are already playing a game!")
+            return
+    # コマンドを受け取ったことをdiscordに通知する
+    await interaction.response.send_message(
+        f"{interaction.user.mention} Blackjack Command Received!"
+    )
+    # 掛け金を引く
+    file_io.add_points(interaction.user.id, -amount, JSON_FILE_NAME)
+    # ゲームを作成する
+    game = trump_game_bj.GameBlackJack(interaction.user.id)
+    # blackjack_playersに追加する
+    blackjack_game.append(game)
+    # discordにゲームembedを送信する。投稿は後で編集できるようにmessageオブジェクトを取得する
+    channel = interaction.channel
+    message = await channel.send(embed=game.get_embed())
+    # メッセージidを保存する
+    game.set_message_id(message.id)
+    # ゲームを開始する
+    game.start_game(amount=amount)
+    # 投稿を更新する
+    await message.edit(embed=game.get_embed())
+    # 投稿にヒットとスタンドのリアクションをつける
+    await message.add_reaction("🇭")
+    await message.add_reaction("🇸")
+
+
 async def create_error_embed(error_msg):
     embed = discord.Embed(title="Error", description=error_msg)
     # カラーを赤に設定する
@@ -1354,6 +1427,37 @@ async def on_ready():
     # Change presence to show server is not running
     await client.change_presence(activity=discord.Game(name=""))
     client.loop.create_task(check_player())
+
+
+# リアクションを受け取ったときに実行される
+@client.event
+async def on_raw_reaction_add(payload):
+    # リアクションをしたメッセージを取得する
+    channel = client.get_channel(payload.channel_id)
+    message = await channel.fetch_message(payload.message_id)
+    # リアクションをしたユーザーを取得する
+    user = await client.fetch_user(payload.user_id)
+    # リアクションをしたユーザーがBotの場合は無視する
+    if user.bot:
+        return
+    # リアクションをしたメッセージがblackjackのゲームである場合
+    if message.id in [game.message_id for game in blackjack_game]:
+        # リアクションをしたユーザーがゲームのプレイヤーである場合
+        for game in blackjack_game:
+            if message.id == game.message_id and user.id == game.player_id:
+                # リアクションに対応する処理を実行するまえにデバッグ用にリアクションの情報を出力する
+                print(f"{get_date_str()} {user.name} {user.id} reacted to {game}")
+                print(f"{get_date_str()} {payload.emoji.name}")
+                # リアクションに対応する処理を実行する
+                await game.react(payload)
+                # メッセージを編集する
+                await message.edit(embed=game.get_embed())
+                # is_playingがFalseになった場合は、blackjack_gameから削除する
+                if not game.is_playing:
+                    blackjack_game.remove(game)
+                    # gameオブジェクトを削除する
+                    del game
+                return
 
 
 def main():
