@@ -1115,6 +1115,10 @@ async def blackjack(interaction: discord.Interaction, amount: str):
             # ゲームがすでに実行中であることを通知する
             await interaction.response.send_message("You are already playing a game!")
             return
+    # DMで実行された場合は拒否する
+    if interaction.channel.type == discord.ChannelType.private:
+        await interaction.response.send_message("This command cannot be used in DM!")
+        return
     # コマンドを受け取ったことをdiscordに通知する
     await interaction.response.send_message(
         f"{interaction.user.mention} Blackjack Command Received!"
@@ -1434,6 +1438,8 @@ async def on_ready():
 async def on_raw_reaction_add(payload):
     # リアクションをしたメッセージを取得する
     channel = client.get_channel(payload.channel_id)
+    if channel is None:
+        return
     message = await channel.fetch_message(payload.message_id)
     # リアクションをしたユーザーを取得する
     user = await client.fetch_user(payload.user_id)
